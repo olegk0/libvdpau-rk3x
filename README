@@ -1,0 +1,25 @@
+VDPAU for rk3x 2015 olegk0 <olegvedi@gmail.com>
+
+based on:
+
+experimental VDPAU implementation for sunxi SoCs.
+Copyright (c) 2013 Jens Kuske <jenskuske@gmail.com>
+
+and
+
+gst-plugin-x170-1.0 Copyright (c) 2008, Atmel Corporation
+
+
+   $ make
+   $ make install
+
+   $ export VDPAU_DRIVER=rk3x
+
+and then for mplayer:
+
+   $ mplayer -vo vdpau -vc ffmpeg12vdpau,ffodivxvdpau,ffh264vdpau, [filename]
+
+
+or for mpv:
+   $ mpv --vo=vdpau --hwdec=vdpau --hwdec-codecs=all [filename]
+
