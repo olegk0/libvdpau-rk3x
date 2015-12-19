@@ -98,9 +98,9 @@ void OvlCopyPackedToFb(OvlMemPgPtr PMemPg, const void *src, int srcPitch, int w,
 void OvlCopyPlanarToFb(OvlMemPgPtr PMemPg, const void *src_Y, const void *src_U, const void *src_V,
 		int srcPitch, int w, int h);
 void OvlCopyNV12SemiPlanarToFb(OvlMemPgPtr PMemPg, const void *src_Y, const void *src_UV,
-		int srcPitch, int w, int h);
+		int srcPitch, int dstPitch, int w, int h);
 void OvlCopyNV16SemiPlanarToFb(OvlMemPgPtr PMemPg, const void *src_Y, const void *src_UV,
-		int srcPitch, int w, int h);
+		int srcPitch, int dstPitch, int w, int h);
 int OvlSetModeFb(OvlLayPg layout, unsigned short xres, unsigned short yres, OvlLayoutFormatType format);
 int OvlResetFB(OvlLayPg layout);
 int OvlCopyHWBufCF(uint32_t SrcYAddr, uint32_t SrcUVAddr, uint32_t SrcVAddr,

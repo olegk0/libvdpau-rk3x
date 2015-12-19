@@ -184,8 +184,9 @@ doflush:
 
 		int length = decoder_p->width * decoder_p->height;
 		OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
-					decoder_p->decPic.pOutputPicture+length, decoder_p->width,\
-					decoder_p->width, decoder_p->height);
+			decoder_p->decPic.pOutputPicture+length,
+			decoder_p->width, decoder->width,
+			decoder_p->width, decoder_p->height);
 
 	    }
 	}

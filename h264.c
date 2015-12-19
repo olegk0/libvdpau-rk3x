@@ -258,7 +258,7 @@ donext:
 	/* read stream info */
 	infoRet = H264DecGetInfo(decoder_p->h264dec, &decoder_p->decInfo);
 	SetFormat(output, decoder_p->decInfo.outputFormat);
-	VDPAU_DBG(4, "play_h264: H264 stream, %dx%d format %x\n",
+	VDPAU_DBG(2, "play_h264: H264 stream, %dx%d format %x\n",
 	    decoder_p->decInfo.picWidth, decoder_p->decInfo.picHeight, decoder_p->decInfo.outputFormat);
 	decoder_p->width = decoder_p->decInfo.picWidth;
 	decoder_p->height = decoder_p->decInfo.picHeight;
@@ -285,7 +285,8 @@ doflush:
 */
 	    int length = decoder_p->width * decoder_p->height;
 	    OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
-		    (u8 *)(decoder_p->decPic.pOutputPicture)+length, decoder_p->width,\
+		    (u8 *)(decoder_p->decPic.pOutputPicture)+length,
+		    decoder_p->width, decoder->width,
 		    decoder_p->width, decoder_p->height);
 
 	    if(qt->FbFilledCnt >= (MEMPG_MAX_CNT)){

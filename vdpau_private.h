@@ -222,7 +222,7 @@ typedef struct
 #ifdef DEBUG
 #include <stdio.h>
 
-#define VDPAU_DBG(dbg_lvl, format, ...) {if(dbg_lvl < DBG_LEVEL ) fprintf(stderr, "[VDPAU RK3X] " format "\n", ##__VA_ARGS__);}
+#define VDPAU_DBG(dbg_lvl, format, ...) {if(dbg_lvl <= DBG_LEVEL ) fprintf(stderr, "[VDPAU RK3X] " format "\n", ##__VA_ARGS__);}
 #define VDPAU_DBG_ONCE(format, ...) do { static uint8_t __once; if (!__once) { fprintf(stderr, "[VDPAU RK3X] " format "\n", ##__VA_ARGS__); __once = 1; } } while(0)
 #else
 #define VDPAU_DBG(dbg_lvl, format, ...)

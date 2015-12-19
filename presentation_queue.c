@@ -426,7 +426,7 @@ int dt = (ltmr - q->device->tmr)/1000000;
 	if(q->Drw_x != x || q->Drw_y != y || q->Drw_w != Drw_w || q->Drw_h != Drw_h){
 	    VDPAU_DBG(2, "changed... x:%d y:%d drw_w:%d drw_h:%d", x, y, Drw_w, Drw_h);
 	    WinNeedClr = True;
-
+	    XClearWindow(q->device->display, q->target->drawable);
 	    
 	    int Src_w = os->video_src_rect.x1 - os->video_src_rect.x0;
 	    int Src_h = os->video_src_rect.y1 - os->video_src_rect.y0;
@@ -459,7 +459,7 @@ int dt = (ltmr - q->device->tmr)/1000000;
 	}
 
 	if(WinNeedClr){
-	    XClearWindow(q->device->display, q->target->drawable);
+
 	    XFillRectangle(q->device->display, q->target->drawable, q->target->gr_context,
 		os->video_dst_rect.x0, os->video_dst_rect.y0, Drw_w, Drw_h);
 	}
