@@ -32,7 +32,7 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
                                    uint32_t height,
                                    VdpVideoSurface *surface)
 {
-	VDPAU_DBG(1, "vdp_video_surface_create, width:%d height:%d",width, height);
+	VDPAU_DBG(1, "vdp_video_surface_create, width:%d height:%d chroma_type:%d",width, height, chroma_type);
 	if (!surface)
 		return VDP_STATUS_INVALID_POINTER;
 
@@ -51,6 +51,11 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
 	vs->width = width;
 	vs->height = height;
 	vs->chroma_type = chroma_type;
+
+	if(!dev->src_width || !dev->src_height){
+	    dev->src_width = width;
+	    dev->src_height = height;
+	}
 
 	vs->luma_size = ALIGN(width, 32) * ALIGN(height, 32);
 
@@ -134,40 +139,42 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
                                              void const *const *source_data,
                                              uint32_t const *source_pitches)
 {
-	VDPAU_DBG(3, "vdp_video_surface_put_bits_y_cb_cr");
-/*	int i;
+	VDPAU_DBG(3, "vdp_video_surface_put_bits_y_cb_cr, format:%d", source_ycbcr_format);
+	int i;
 	const uint8_t *src;
 	uint8_t *dst;
 	video_surface_ctx_t *vs = handle_get(surface);
+
 	if (!vs)
 		return VDP_STATUS_INVALID_HANDLE;
 
-	VdpStatus ret = yuv_prepare(vs);
-	if (ret != VDP_STATUS_OK)
-		return ret;
+	device_ctx_t *dev = vs->device;
+	queue_target_ctx_t *qt = dev->queue_target;
 
 	vs->source_format = source_ycbcr_format;
+
+	OvlMemPgPtr CurMemBuf =  GetMemPgForPut(qt);
 
 	switch (source_ycbcr_format)
 	{
 	case VDP_YCBCR_FORMAT_YUYV:
-	    OvlCopyPackedToFb(vs->device->CurMemBuf, source_data[0], source_pitches[0], vs->device->disp_pitch, vs->width, vs->height, False);
+	    OvlCopyPackedToFb(CurMemBuf, source_data[0], source_pitches[0], dev->src_width, vs->width, vs->height, False);
 	    break;
 	case VDP_YCBCR_FORMAT_UYVY:
-	    OvlCopyPackedToFb(vs->device->CurMemBuf, source_data[0], source_pitches[0], vs->device->disp_pitch, vs->width, vs->height, True);
+	    OvlCopyPackedToFb(CurMemBuf, source_data[0], source_pitches[0], dev->src_width, vs->width, vs->height, True);
+	    break;
+	case VDP_YCBCR_FORMAT_NV12:
+	    OvlCopyNV12SemiPlanarToFb(CurMemBuf, source_data[0], source_data[1], source_pitches[0], dev->src_width, vs->width, vs->height);
+		break;
+	case VDP_YCBCR_FORMAT_YV12:
+	    OvlCopyPlanarToFb(CurMemBuf, source_data[0], source_data[2], source_data[1], source_pitches[0], dev->src_width, vs->width, vs->height);
 	    break;
 	case VDP_YCBCR_FORMAT_Y8U8V8A8:
 	case VDP_YCBCR_FORMAT_V8U8Y8A8:
-		break;
-
-	case VDP_YCBCR_FORMAT_NV12:
-	    OvlCopyNV12SemiPlanarToFb(vs->device->CurMemBuf, source_data[0], source_data[1], source_pitches[0], vs->device->disp_pitch, vs->width, vs->height);
-		break;
-	case VDP_YCBCR_FORMAT_YV12:
-	    OvlCopyPlanarToFb(vs->device->CurMemBuf, source_data[0], source_data[2], source_data[1], source_pitches[0], vs->device->disp_pitch, vs->width, vs->height);
-	    break;
+	default:
+	    return VDP_STATUS_ERROR;
 	}
-*/
+
 	return VDP_STATUS_OK;
 }
 

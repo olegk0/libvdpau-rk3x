@@ -44,6 +44,8 @@ typedef struct
     MP4DecOutput decOut;
     MP4DecInfo decInfo;
     MP4DecPicture decPic;
+    Bool ThereArePic;
+    int ThereArePicNum;
 } mpeg4_private_t;
 
 static void mpeg4_private_free(decoder_ctx_t *decoder)
@@ -139,12 +141,19 @@ static VdpStatus mpeg4_decode(decoder_ctx_t *decoder,
 		return VDP_STATUS_ERROR;
 	}
 */
+    VDPAU_DBG(4, "MPEG4 stream len ******* %d ********\n", *len);
+
+    if(decoder_p->ThereArePic){
+	VDPAU_DBG(4, "**ThereArePic detected\n");
+	decoder_p->ThereArePicNum++;
+	goto doflush;
+    }
+
+    decoder_p->ThereArePicNum = 0;
 
     decoder_p->decIn.pStream = (u8 *) decoder->streamMem.virtualAddress;
     decoder_p->decIn.streamBusAddress = decoder->streamMem.busAddress;
     decoder_p->decIn.dataLen = *len;
-
-    VDPAU_DBG(4, "MPEG4 stream len ******* %d ********\n", *len);
 
 donext:
     decoder_p->decIn.picId = decoder_p->picNumber;
@@ -155,7 +164,7 @@ donext:
 	// read stream info 
 	infoRet = MP4DecGetInfo(decoder_p->mpeg4dec, &decoder_p->decInfo);
 	SetFormat( output, decoder_p->decInfo.outputFormat);
-	VDPAU_DBG(2, "MPEG4 stream, %dx%d, interlaced %d, format %x\n",
+	VDPAU_DBG(1, "MPEG4 stream, %dx%d, interlaced %d, format %x\n",
 	    decoder_p->decInfo.frameWidth, decoder_p->decInfo.frameHeight,
 	    decoder_p->decInfo.interlacedSequence, decoder_p->decInfo.outputFormat);
 	decoder_p->width = decoder_p->decInfo.frameWidth;
@@ -172,6 +181,7 @@ donext:
     case MP4DEC_PIC_DECODED:
 	// a picture was decoded 
 	decoder_p->picNumber++;
+	decoder_p->ThereArePic = True;
 doflush:
 	while (MP4DecNextPicture(
 	    decoder_p->mpeg4dec, &decoder_p->decPic, forceflush) == MP4DEC_PIC_RDY) {
@@ -185,16 +195,29 @@ doflush:
 		if (decoder_p->decPic.fieldPicture)
 		    secondField = 0;
 
+if(decoder_p->ThereArePicNum < 1){
 		int length = decoder_p->width * decoder_p->height;
 		OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
 			decoder_p->decPic.pOutputPicture+length,
 			decoder_p->width, decoder->width,
 			decoder_p->width, decoder_p->height);
+}else{
+    decoder_p->ThereArePicNum = 0;
+    VDPAU_DBG(4, "Drop pic\n");
+}
 
 	    }
 	    else if (decoder_p->decPic.fieldPicture)
 		secondField = 1;
+
+        if(qt->FbFilledCnt >= (MEMPG_MAX_CNT)){
+	    VDPAU_DBG(4, "Buff full+++++++\n");
+	    *len = 0;
+	    return VDP_STATUS_OK;
+        }
 	}
+
+	decoder_p->ThereArePic = False;
 	break;
     case MP4DEC_NONREF_PIC_SKIPPED:
 	// Skipped non-reference picture
@@ -273,6 +296,8 @@ VdpStatus new_decoder_mpeg4(decoder_ctx_t *decoder)
     }
 
     decoder_p->picNumber = 0;
+    decoder_p->ThereArePic = False;
+    decoder_p->ThereArePicNum = 0;
 
     decoder->decode = mpeg4_decode;
     decoder->private = decoder_p;

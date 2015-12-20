@@ -26,6 +26,8 @@
 #define __VDPAU_PRIVATE_H__
 
 #define DEBUG
+#define DBG_LEVEL 2
+
 #define MAX_HANDLES 64
 #define VBV_SIZE (1 * 1024 * 1024)
 
@@ -41,8 +43,6 @@
 #define MEMPG_MAX_CNT 4
 #define RK_WDPAU_WIDTH_MAX 1920
 #define RK_WDPAU_HEIGHT_MAX 1080
-
-#define DBG_LEVEL 2
 
 uint64_t get_time(void);
 

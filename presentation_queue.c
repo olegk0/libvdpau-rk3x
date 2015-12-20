@@ -163,7 +163,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 
 	qt->drawable = drawable;
 	qt->device = dev;
-
+	VDPAU_DBG(1, "width:%d height:%d", dev->src_width ,dev->src_height);
 	ret = Open_RkLayers();
 	if ( ret < 0)
 	{
@@ -180,7 +180,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 	    qt->MemPgSize = MEMPG_DEF_SIZE;
 	else
 	    qt->MemPgSize = (dev->src_width * dev->src_height * 2) + (10 * 4096);//TODO Only for YUV modes
-	
+
 	if(InitPhyMemPg(qt)) //new MemPg assigned to PutFbPtr
 	    goto out_fb;
 
@@ -394,14 +394,10 @@ int dt = (ltmr - q->device->tmr)/1000000;
 
 	    switch (os->vs->source_format) {
 	    case VDP_YCBCR_FORMAT_YUYV:
-		q->DispMode = RK_FORMAT_YCbCr_422_SP;
-		break;
 	    case VDP_YCBCR_FORMAT_UYVY:
 		q->DispMode = RK_FORMAT_YCbCr_422_SP;
 		break;
 	    case VDP_YCBCR_FORMAT_NV12:
-		q->DispMode = RK_FORMAT_YCrCb_NV12_SP;
-		break;
 	    case VDP_YCBCR_FORMAT_YV12:
 		q->DispMode = RK_FORMAT_YCrCb_NV12_SP;
 		break;

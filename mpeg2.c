@@ -155,7 +155,7 @@ donext:
 	// read stream info 
 	infoRet = Mpeg2DecGetInfo(decoder_p->mpeg2dec, &decoder_p->decInfo);
 	SetFormat( output, decoder_p->decInfo.outputFormat);
-	VDPAU_DBG(2, "MPEG2 stream, %dx%d, interlaced %d, format %x\n",
+	VDPAU_DBG(1, "MPEG2 stream, %dx%d, interlaced %d, format %x\n",
 	    decoder_p->decInfo.frameWidth, decoder_p->decInfo.frameHeight,
 	    decoder_p->decInfo.interlacedSequence, decoder_p->decInfo.outputFormat);
 	decoder_p->width = decoder_p->decInfo.frameWidth;

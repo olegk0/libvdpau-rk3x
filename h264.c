@@ -91,25 +91,26 @@ static void h264_init_header(decoder_ctx_t *decoder, VdpPictureInfoH264 const *i
     decoder_p->pSeqParamSet.direct8x8InferenceFlag = info->direct_8x8_inference_flag;
 //info.h264.direct_8x8_inference_flag  = h->sps.direct_8x8_inference_flag;
     decoder_p->pSeqParamSet.picWidthInMbs = (decoder->width+15) / 16;
-    if (info->frame_mbs_only_flag)
+//TODO check
+//    if (info->frame_mbs_only_flag)
 	decoder_p->pSeqParamSet.picHeightInMbs = (decoder->height+15) / 16;
-    else
-	decoder_p->pSeqParamSet.picHeightInMbs = ((decoder->height / 2)+15) / 16;
+//    else
+//	decoder_p->pSeqParamSet.picHeightInMbs = ((decoder->height / 2)+15) / 16;
 
 //TODO next lines only for test
     decoder_p->pSeqParamSet.maxDpbSize = decoder_p->pSeqParamSet.numRefFrames;
     decoder_p->pSeqParamSet.chromaFormatIdc = 1;//?
     decoder_p->pSeqParamSet.scalingMatrixPresentFlag = 0;//?
 
-    VDPAU_DBG(2, "SPS.picWidthInMbs: %d", decoder_p->pSeqParamSet.picWidthInMbs);
-    VDPAU_DBG(2, "SPS.picHeightInMbs: %d", decoder_p->pSeqParamSet.picHeightInMbs);
-    VDPAU_DBG(2, "SPS.maxDpbSize: %d", decoder_p->pSeqParamSet.maxDpbSize);
-    VDPAU_DBG(2, "SPS.numRefFrames: %d", decoder_p->pSeqParamSet.numRefFrames);
-    VDPAU_DBG(2, "SPS.maxFrameNum: %d", decoder_p->pSeqParamSet.maxFrameNum);
-    VDPAU_DBG(2, "SPS.monoChrome: %d", decoder_p->pSeqParamSet.monoChrome);
-    VDPAU_DBG(2, "SPS.frameMbsOnlyFlag: %d", decoder_p->pSeqParamSet.frameMbsOnlyFlag);
-    VDPAU_DBG(2, "SPS.chromaFormatIdc: %d", decoder_p->pSeqParamSet.chromaFormatIdc);
-    VDPAU_DBG(2, "SPS.scalingMatrixPresentFlag: %d", decoder_p->pSeqParamSet.scalingMatrixPresentFlag);
+    VDPAU_DBG(1, "SPS.picWidthInMbs: %d", decoder_p->pSeqParamSet.picWidthInMbs);
+    VDPAU_DBG(1, "SPS.picHeightInMbs: %d", decoder_p->pSeqParamSet.picHeightInMbs);
+    VDPAU_DBG(1, "SPS.maxDpbSize: %d", decoder_p->pSeqParamSet.maxDpbSize);
+    VDPAU_DBG(1, "SPS.numRefFrames: %d", decoder_p->pSeqParamSet.numRefFrames);
+    VDPAU_DBG(1, "SPS.maxFrameNum: %d", decoder_p->pSeqParamSet.maxFrameNum);
+    VDPAU_DBG(1, "SPS.monoChrome: %d", decoder_p->pSeqParamSet.monoChrome);
+    VDPAU_DBG(1, "SPS.frameMbsOnlyFlag: %d", decoder_p->pSeqParamSet.frameMbsOnlyFlag);
+    VDPAU_DBG(1, "SPS.chromaFormatIdc: %d", decoder_p->pSeqParamSet.chromaFormatIdc);
+    VDPAU_DBG(1, "SPS.scalingMatrixPresentFlag: %d", decoder_p->pSeqParamSet.scalingMatrixPresentFlag);
 //VDPAU_DBG("SPS.: %d", decoder_p->pSeqParamSet.);
 //VDPAU_DBG("SPS.: %d", decoder_p->pSeqParamSet.);
 
@@ -155,13 +156,13 @@ static void h264_init_header(decoder_ctx_t *decoder, VdpPictureInfoH264 const *i
     decoder_p->pPicParamSet.scalingMatrixPresentFlag = 0;
 //	decoder_p->pPicParamSet.
 
-    VDPAU_DBG(2, "PPS.numSliceGroups: %d", decoder_p->pPicParamSet.numSliceGroups);
-    VDPAU_DBG(2, "PPS.runLength: %d", decoder_p->pPicParamSet.runLength);
-    VDPAU_DBG(2, "PPS.entropyCodingModeFlag: %d", decoder_p->pPicParamSet.entropyCodingModeFlag);
-    VDPAU_DBG(2, "PPS.weightedPredFlag: %d", decoder_p->pPicParamSet.weightedPredFlag);
-    VDPAU_DBG(2, "PPS.weightedBiPredIdc: %d", decoder_p->pPicParamSet.weightedBiPredIdc);
-    VDPAU_DBG(2, "PPS.transform8x8Flag: %d", decoder_p->pPicParamSet.transform8x8Flag);
-    VDPAU_DBG(2, "PPS.scalingMatrixPresentFlag: %d", decoder_p->pPicParamSet.scalingMatrixPresentFlag);
+    VDPAU_DBG(1, "PPS.numSliceGroups: %d", decoder_p->pPicParamSet.numSliceGroups);
+    VDPAU_DBG(1, "PPS.runLength: %d", decoder_p->pPicParamSet.runLength);
+    VDPAU_DBG(1, "PPS.entropyCodingModeFlag: %d", decoder_p->pPicParamSet.entropyCodingModeFlag);
+    VDPAU_DBG(1, "PPS.weightedPredFlag: %d", decoder_p->pPicParamSet.weightedPredFlag);
+    VDPAU_DBG(1, "PPS.weightedBiPredIdc: %d", decoder_p->pPicParamSet.weightedBiPredIdc);
+    VDPAU_DBG(1, "PPS.transform8x8Flag: %d", decoder_p->pPicParamSet.transform8x8Flag);
+    VDPAU_DBG(1, "PPS.scalingMatrixPresentFlag: %d", decoder_p->pPicParamSet.scalingMatrixPresentFlag);
 //VDPAU_DBG("PPS.: %d", decoder_p->pPicParamSet.);
 
     h264bsdStorePicParamSetExt(decoder_p->h264dec, &decoder_p->pPicParamSet);
@@ -258,7 +259,7 @@ donext:
 	/* read stream info */
 	infoRet = H264DecGetInfo(decoder_p->h264dec, &decoder_p->decInfo);
 	SetFormat(output, decoder_p->decInfo.outputFormat);
-	VDPAU_DBG(2, "play_h264: H264 stream, %dx%d format %x\n",
+	VDPAU_DBG(1, "play_h264: H264 stream, %dx%d format %x\n",
 	    decoder_p->decInfo.picWidth, decoder_p->decInfo.picHeight, decoder_p->decInfo.outputFormat);
 	decoder_p->width = decoder_p->decInfo.picWidth;
 	decoder_p->height = decoder_p->decInfo.picHeight;
@@ -290,7 +291,7 @@ doflush:
 		    decoder_p->width, decoder_p->height);
 
 	    if(qt->FbFilledCnt >= (MEMPG_MAX_CNT)){
-//		VDPAU_DBG( "Buff full+++++++\n");
+		VDPAU_DBG(4, "Buff full+++++++\n");
 		*len = 0;
 		return VDP_STATUS_OK;
 	    }
