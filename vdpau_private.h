@@ -39,12 +39,9 @@
 #include <inc/dwl.h>
 #include <inc/ppapi.h>
 
-//#define INTERNAL_YCBCR_FORMAT (VdpYCbCrFormat)0xffff
-#define MEMPG_MAX_CNT 4
+#define MEMPG_MAX_CNT 8
 #define RK_WDPAU_WIDTH_MAX 1920
 #define RK_WDPAU_HEIGHT_MAX 1080
-
-uint64_t get_time(void);
 
 typedef struct queue_target_ctx queue_target_ctx;
 
@@ -54,7 +51,6 @@ typedef struct
 	int screen;
 	VdpPreemptionCallback *preemption_callback;
 	void *preemption_callback_context;
-//	int fd;
 	int osd_enabled;
 	uint64_t tmr;
 	uint32_t src_width;
@@ -68,7 +64,8 @@ typedef struct mem_fb
 {
 	OvlMemPgPtr pMemBuf;
 	void* pMapMemBuf;
-	void *pYUVMapMemBuf;
+	uint32_t UVoffset;
+	uint32_t PhyAddr;
 	struct mem_fb *Next;
 } mem_fb_t;
 
@@ -82,7 +79,6 @@ typedef struct queue_target_ctx
 	Drawable drawable;
 	device_ctx_t *device;
 	GC gr_context;
-//	int fd;
 	uint32_t OSDColorKey;
 	OvlLayPg VideoLayer;
 	OvlLayPg OSDLayer;
@@ -97,9 +93,10 @@ typedef struct queue_target_ctx
 	mem_fb_t *DispFbPtr;
 	mem_fb_t *WorkFbPtr;
 	mem_fb_t *PutFbPtr;
-	int MemPgSize;
+	uint32_t MemPgSize;
 	uint32_t OSDShowFlags;
 	uint32_t OSDRendrFlags;
+	int PicBalance;
 } queue_target_ctx_t;
 
 typedef struct
@@ -115,7 +112,7 @@ typedef struct video_surface_ctx_struct
 	VdpChromaType chroma_type;
 	VdpYCbCrFormat source_format;
 	yuv_data_t *yuv;
-	int luma_size;
+	uint32_t luma_size;
 	void *decoder_private;
 	void (*decoder_private_free)(struct video_surface_ctx_struct *surface);
 } video_surface_ctx_t;
@@ -123,18 +120,23 @@ typedef struct video_surface_ctx_struct
 typedef struct decoder_ctx_struct
 {
 	VdpDecoderProfile profile;
-//	void *data;
-	uint32_t width;
-	uint32_t height;
+	uint32_t dec_width;
+	uint32_t dec_height;
 	device_ctx_t *device;
 	VdpStatus (*decode)(struct decoder_ctx_struct *decoder, VdpPictureInfo const *info, int *len, video_surface_ctx_t *output);
 	void *private;
 	void (*private_free)(struct decoder_ctx_struct *decoder);
 	DWLLinearMem_t streamMem;
-	int	smBufLen;
+	uint32_t smBufLen;
 	void *DWLinstance;
-	PPInst pp;
 	void *pDecInst;
+	PPInst pp;
+//TODO next lines maybe move to another object
+	uint32_t crop_width;
+	uint32_t crop_height;
+//	uint32_t crop_x;
+//	uint32_t crop_y;
+	uint32_t rotation;
 } decoder_ctx_t;
 
 typedef struct
@@ -173,7 +175,6 @@ typedef struct
 	uint32_t flags;
 } rgba_surface_t;
 
-
 typedef struct
 {
 	device_ctx_t *device;
@@ -196,6 +197,7 @@ typedef struct
 	VdpBool frequently_accessed;
 } bitmap_surface_ctx_t;
 
+
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof((a)) / sizeof((a)[0]))
 #endif
@@ -217,7 +219,7 @@ typedef struct
 
 #define ALIGN(x, a) (((x) + ((typeof(x))(a) - 1)) & ~((typeof(x))(a) - 1))
 
-#define VDPAU_ERR(format, ...) fprintf(stderr, "[VDPAU RK3X] " format "\n", ##__VA_ARGS__)
+#define VDPAU_ERR(format, ...) fprintf(stderr, "[VDPAU RK3X](%s):" format "\n",__func__ ,##__VA_ARGS__)
 
 #ifdef DEBUG
 #include <stdio.h>
@@ -239,12 +241,15 @@ typedef struct
 #define PROP_DEFAULT_DPB_FLAGS DEC_DPB_ALLOW_FIELD_ORDERING
 
 OvlMemPgPtr GetMemPgForPut(queue_target_ctx_t *qt);
+mem_fb_t *GetMemBlkForPut(queue_target_ctx_t *qt);
 
 VdpStatus new_decoder_mpeg2(decoder_ctx_t *decoder);
 VdpStatus new_decoder_h264(decoder_ctx_t *decoder);
 VdpStatus new_decoder_mpeg4(decoder_ctx_t *decoder);
 
-
+VdpStatus vdpPPsetConfig(decoder_ctx_t *dec, uint32_t pixformat, Bool interlaced);
+VdpStatus vdpPPsetOutBuf(mem_fb_t *mempg, decoder_ctx_t *dec);
+uint64_t get_time(void);
 
 typedef uint32_t VdpHandle;
 

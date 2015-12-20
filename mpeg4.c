@@ -38,14 +38,13 @@ typedef struct
 {
     MP4DecInst mpeg4dec;
     u32 picNumber;
-    int width;
-    int height;
+//    int width;
+//    int height;
     MP4DecInput decIn;
     MP4DecOutput decOut;
     MP4DecInfo decInfo;
     MP4DecPicture decPic;
     Bool ThereArePic;
-    int ThereArePicNum;
 } mpeg4_private_t;
 
 static void mpeg4_private_free(decoder_ctx_t *decoder)
@@ -100,7 +99,7 @@ static void mpeg4_error(int err)
     default:
 	err_name = "MP4DEC_UNKNOWN_ERROR";
     }
-    VDPAU_ERR("play_mpeg4: decode error (%d) %s\n", err, err_name);
+    VDPAU_ERR("decode error (%d) %s\n", err, err_name);
 }
 
 static void SetFormat(video_surface_ctx_t *output, uint32_t format)
@@ -145,11 +144,8 @@ static VdpStatus mpeg4_decode(decoder_ctx_t *decoder,
 
     if(decoder_p->ThereArePic){
 	VDPAU_DBG(4, "**ThereArePic detected\n");
-	decoder_p->ThereArePicNum++;
 	goto doflush;
     }
-
-    decoder_p->ThereArePicNum = 0;
 
     decoder_p->decIn.pStream = (u8 *) decoder->streamMem.virtualAddress;
     decoder_p->decIn.streamBusAddress = decoder->streamMem.busAddress;
@@ -167,15 +163,10 @@ donext:
 	VDPAU_DBG(1, "MPEG4 stream, %dx%d, interlaced %d, format %x\n",
 	    decoder_p->decInfo.frameWidth, decoder_p->decInfo.frameHeight,
 	    decoder_p->decInfo.interlacedSequence, decoder_p->decInfo.outputFormat);
-	decoder_p->width = decoder_p->decInfo.frameWidth;
-	decoder_p->height = decoder_p->decInfo.frameHeight;
-	if (decoder->pp) {
-/*	    gst_decoder_p_ppsetconfig(decoder_p,
-		         decInfo.outputFormat,
-		         &decoder_p->width, &decoder_p->height,
-		         decInfo.interlacedSequence);
-*/
-	}
+	decoder->dec_width = decoder_p->decInfo.frameWidth;
+	decoder->dec_height = decoder_p->decInfo.frameHeight;
+	if (decoder->pp)
+	    vdpPPsetConfig(decoder, decoder_p->decInfo.outputFormat, decoder_p->decInfo.interlacedSequence);
 
 	break;
     case MP4DEC_PIC_DECODED:
@@ -187,24 +178,31 @@ doflush:
 	    decoder_p->mpeg4dec, &decoder_p->decPic, forceflush) == MP4DEC_PIC_RDY) {
 
 	    if ((decoder_p->decPic.fieldPicture && secondField) || !decoder_p->decPic.fieldPicture) {
-		VDPAU_DBG(4 ,"play_mpeg4: decoded picture %d, mpeg4 timestamp: %d:%d:%d:%d (%d)\n",
-			 decoder_p->picNumber,
+		qt->PicBalance++;
+		VDPAU_DBG(4 ,"play_mpeg4: decoded picture %d, PicBalance:%d mpeg4 timestamp: %d:%d:%d:%d (%d)\n",
+			 decoder_p->picNumber, qt->PicBalance,
 			 decoder_p->decPic.timeCode.hours, decoder_p->decPic.timeCode.minutes,
 			 decoder_p->decPic.timeCode.seconds, decoder_p->decPic.timeCode.timeIncr,
 			 decoder_p->decPic.timeCode.timeRes);
 		if (decoder_p->decPic.fieldPicture)
 		    secondField = 0;
 
-if(decoder_p->ThereArePicNum < 1){
-		int length = decoder_p->width * decoder_p->height;
-		OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
-			decoder_p->decPic.pOutputPicture+length,
-			decoder_p->width, decoder->width,
-			decoder_p->width, decoder_p->height);
-}else{
-    decoder_p->ThereArePicNum = 0;
-    VDPAU_DBG(4, "Drop pic\n");
-}
+		if(qt->PicBalance < (MEMPG_MAX_CNT - 2))
+		{
+
+		    if(decoder->pp){
+			vdpPPsetOutBuf( GetMemBlkForPut(qt), decoder);
+		    }else{
+			uint32_t length = decoder->dec_width * decoder->dec_height;
+			OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
+			    decoder_p->decPic.pOutputPicture+length,
+			    decoder->dec_width, decoder->device->src_width,
+			    decoder->dec_width, decoder->dec_height);
+		    }
+		}else{
+		    qt->PicBalance--;
+		    VDPAU_DBG(4, "Drop pic\n");
+		}
 
 	    }
 	    else if (decoder_p->decPic.fieldPicture)
@@ -291,13 +289,12 @@ VdpStatus new_decoder_mpeg4(decoder_ctx_t *decoder)
                          PROP_DEFAULT_NUM_FRAME_BUFFS,
                          PROP_DEFAULT_DPB_FLAGS);
     if (ret != MP4DEC_OK){
-	VDPAU_ERR("MP4DecInit error:%d",ret);
+	VDPAU_ERR("Init error:%d",ret);
 	goto err_free;
     }
 
     decoder_p->picNumber = 0;
     decoder_p->ThereArePic = False;
-    decoder_p->ThereArePicNum = 0;
 
     decoder->decode = mpeg4_decode;
     decoder->private = decoder_p;

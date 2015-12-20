@@ -30,24 +30,44 @@
 #include <string.h>
 #include "vdpau_private.h"
 
-/*
-static gboolean gst_x170_ppsetconfig(Gstx170 *x170, guint pixformat, guint *width, guint *height,
-		     guint interlaced)
+VdpStatus vdpPPsetOutBuf(mem_fb_t *mempg, decoder_ctx_t *dec)
+{
+    PPResult ppret;
+    PPConfig ppconfig;
+
+    if ((ppret = PPGetConfig(dec->pp, &ppconfig)) != PP_OK) {
+	VDPAU_ERR("cannot retrieve PP settings (err=%d)", ppret);
+	return VDP_STATUS_ERROR;
+    }
+
+    ppconfig.ppOutImg.bufferBusAddr = mempg->PhyAddr;
+    ppconfig.ppOutImg.bufferChromaBusAddr = mempg->PhyAddr + mempg->UVoffset;
+//    memset(dec->ppMem.virtualAddress, 0, dec->ppMem.size);
+
+    if ((ppret = PPSetConfig(dec->pp, &ppconfig)) != PP_OK) {
+	VDPAU_ERR("cannot init. PP settings (err=%d)", ppret);
+	return VDP_STATUS_ERROR;
+    }
+
+    return VDP_STATUS_OK;
+}
+
+VdpStatus vdpPPsetConfig(decoder_ctx_t *dec, uint32_t pixformat, Bool interlaced)
 {
     PPConfig ppconfig;
     PPResult ppret;
-    guint tmp;
+    uint32_t tmp;
+    uint32_t width = (dec->dec_width + 7) & ~7;
+    uint32_t height = (dec->dec_height + 7) & ~7;
 
-    if ((ppret = PPGetConfig(x170->pp, &ppconfig)) != PP_OK) {
-	GST_DEBUG_OBJECT(x170, "cannot retrieve PP settings (err=%d)",
-		 ppret);
-	return FALSE;
+
+    if ((ppret = PPGetConfig(dec->pp, &ppconfig)) != PP_OK) {
+	VDPAU_ERR("cannot retrieve PP settings (err=%d)", ppret);
+	return VDP_STATUS_ERROR;
     }
 
-    *width = (*width + 7) & ~7;
-    *height = (*height + 7) & ~7;
-    ppconfig.ppInImg.width = *width;
-    ppconfig.ppInImg.height = *height;
+    ppconfig.ppInImg.width = width;
+    ppconfig.ppInImg.height = height;
     ppconfig.ppInImg.pixFormat = pixformat;
     ppconfig.ppInImg.videoRange = 1;
     ppconfig.ppInImg.vc1RangeRedFrm = 0;
@@ -57,40 +77,37 @@ static gboolean gst_x170_ppsetconfig(Gstx170 *x170, guint pixformat, guint *widt
     ppconfig.ppInImg.vc1RangeMapCEnable = 0;
     ppconfig.ppInImg.vc1RangeMapCCoeff = 0;
 
-    if (x170->crop_width != 0 || x170->crop_height != 0) {
+    dec->crop_width = ((dec->device->src_width > width ? width : dec->device->src_width) + 7) & ~7;
+    dec->crop_height= ((dec->device->src_height > height ? height : dec->device->src_height) + 7) & ~7;
+
+    if (dec->crop_width != 0 || dec->crop_height != 0) {
 	ppconfig.ppInCrop.enable = 1;
-	ppconfig.ppInCrop.originX = x170->crop_x;
-	ppconfig.ppInCrop.originY = x170->crop_y;
-	ppconfig.ppInCrop.width = x170->crop_width;
-	ppconfig.ppInCrop.height = x170->crop_height;
-	*width = x170->crop_width;
-	*height = x170->crop_height;
+	ppconfig.ppInCrop.originX = 0;
+	ppconfig.ppInCrop.originY = 0;
+	ppconfig.ppInCrop.width = dec->crop_width;
+	ppconfig.ppInCrop.height = dec->crop_height;
+	width = dec->crop_width;
+	height = dec->crop_height;
     }
     else
 	ppconfig.ppInCrop.enable = 0;
 
-    switch (x170->rotation) {
-    case HT_ROTATION_0:
-	ppconfig.ppInRotation.rotation = PP_ROTATION_NONE;
+    ppconfig.ppInRotation.rotation = dec->rotation;
+    switch(dec->rotation) {
+    case PP_ROTATION_RIGHT_90:
+	tmp = width;
+	width = height;
+	height = tmp;
 	break;
-    case HT_ROTATION_90:
-	ppconfig.ppInRotation.rotation = PP_ROTATION_RIGHT_90;
-	tmp = *width;
-	*width = *height;
-	*height = tmp;
-	break;
-    case HT_ROTATION_180:
-	ppconfig.ppInRotation.rotation = PP_ROTATION_180;
-	break;
-    case HT_ROTATION_270:
-	ppconfig.ppInRotation.rotation = PP_ROTATION_LEFT_90;
-	tmp = *width;
-	*width = *height;
-	*height = tmp;
+    case PP_ROTATION_LEFT_90:
+	tmp = width;
+	width = height;
+	height = tmp;
 	break;
     }
 
-    switch (x170->output) {
+	ppconfig.ppOutImg.pixFormat = PP_PIX_FMT_YCBCR_4_2_0_SEMIPLANAR;
+/*    switch (dec->output) {
     case HT_OUTPUT_UYVY:
 	ppconfig.ppOutImg.pixFormat = PP_PIX_FMT_YCBCR_4_2_0_SEMIPLANAR;
 	break;
@@ -104,69 +121,68 @@ static gboolean gst_x170_ppsetconfig(Gstx170 *x170, guint pixformat, guint *widt
 	ppconfig.ppOutImg.pixFormat = PP_PIX_FMT_RGB32;
 	break;
     }
-
-    // Check scaler configuration
-    if( (x170->output_width != 0) && (x170->output_height != 0) ) {
+*/
+/*    // Check scaler configuration
+    if( (dec->output_width != 0) && (dec->output_height != 0) ) {
 	// We can not upscale width and downscale height 
-	if( (x170->output_width > *width) && (x170->output_height < *height) ) 
-	    x170->output_width = *width;
+	if( (dec->output_width > *width) && (dec->output_height < *height) ) 
+	    dec->output_width = *width;
 	
 	// We can not downscale width and upscale height
-	if( (x170->output_width < *width) && (x170->output_height > *height) ) 
-	    x170->output_height = *height;
+	if( (dec->output_width < *width) && (dec->output_height > *height) ) 
+	    dec->output_height = *height;
 
 	// Check width output value (min and max)
-	if( x170->output_width < 16 )
-	    x170->output_width = 16;
-	if( x170->output_width > 1280 ) 
-	    x170->output_width = 1280;
+	if( dec->output_width < 16 )
+	    dec->output_width = 16;
+	if( dec->output_width > 1280 ) 
+	    dec->output_width = 1280;
 
 	// Check height output value (min and max)
-	if( x170->output_height < 16 )
-	    x170->output_height = 16;
-	if( x170->output_height > 720 )
-	    x170->output_height = 720;
+	if( dec->output_height < 16 )
+	    dec->output_height = 16;
+	if( dec->output_height > 720 )
+	    dec->output_height = 720;
 
 	// Check width upscale factor (limited to 3x the input width)
-	if( x170->output_width  > (3*(*width)) )
-	    x170->output_width = (3*(*width));
+	if( dec->output_width  > (3*(*width)) )
+	    dec->output_width = (3*(*width));
 
 	// Check height upscale factor (limited to 3x the input width - 2 pixels)
-	if( x170->output_height  > ((3*(*height) - 2)) )
-	    x170->output_height = ((3*(*height) - 2));
+	if( dec->output_height  > ((3*(*height) - 2)) )
+	    dec->output_height = ((3*(*height) - 2));
 
 	// Re-align according to vertical and horizontal scaler steps (resp. 8 and 2)
-	x170->output_width  = (x170->output_width/8)*8;
-	x170->output_height = (x170->output_height/2)*2;
+	dec->output_width  = (dec->output_width/8)*8;
+	dec->output_height = (dec->output_height/2)*2;
 	
-	*width  = x170->output_width;
-	*height = x170->output_height;
+	*width  = dec->output_width;
+	*height = dec->output_height;
     } 
-    
-    ppconfig.ppOutImg.width = *width;
-    ppconfig.ppOutImg.height = *height;
+*/    
+    ppconfig.ppOutImg.width = width;
+    ppconfig.ppOutImg.height = height;
 
-    GST_DEBUG_OBJECT(x170, "ppconfig.ppOutImg.width = %d, ppconfig.ppOutImg.height = %d", ppconfig.ppOutImg.width, ppconfig.ppOutImg.height);
-    GST_DEBUG_OBJECT(x170, "x170->output_width = %d, x170->output_height = %d", x170->output_width, x170->output_height);
+    VDPAU_DBG(2, "PP: config.ppOutImg.width = %d, ppconfig.ppOutImg.height = %d", ppconfig.ppOutImg.width, ppconfig.ppOutImg.height);
+    VDPAU_DBG(2, "PP: dec->output_width = %d, dec->output_height = %d", dec->crop_width, dec->crop_height);
 
-    ppconfig.ppOutImg.bufferBusAddr = x170->outbuf.busAddress;
-    ppconfig.ppOutImg.bufferChromaBusAddr = x170->outbuf.busAddress +
-			ppconfig.ppOutImg.width *
-			ppconfig.ppOutImg.height;
-    memset(x170->outbuf.virtualAddress, 0, x170->outbuf_size);
+    mem_fb_t *mempg = GetMemBlkForPut(dec->device->queue_target);
+    ppconfig.ppOutImg.bufferBusAddr = mempg->PhyAddr;
+    ppconfig.ppOutImg.bufferChromaBusAddr = mempg->PhyAddr + mempg->UVoffset;
+
+//    memset(dec->ppMem.virtualAddress, 0, dec->ppMem.size);
 
     ppconfig.ppOutRgb.alpha = 255;
     if (interlaced)
 	ppconfig.ppOutDeinterlace.enable = 1;
 
-    if ((ppret = PPSetConfig(x170->pp, &ppconfig)) != PP_OK) {
-	GST_DEBUG_OBJECT(x170, "cannot init. PP settings (err=%d)",
-		 ppret);
-	return FALSE;
+    if ((ppret = PPSetConfig(dec->pp, &ppconfig)) != PP_OK) {
+	VDPAU_ERR("cannot init. PP settings (err=%d)", ppret);
+	return VDP_STATUS_ERROR;
     }
-    return TRUE;
+    return VDP_STATUS_OK;
 }
-*/
+
 
 VdpStatus vdp_decoder_create(VdpDevice device,
                              VdpDecoderProfile profile,
@@ -175,7 +191,7 @@ VdpStatus vdp_decoder_create(VdpDevice device,
                              uint32_t max_references,
                              VdpDecoder *decoder)
 {
-	VDPAU_DBG(1, "vdp_decoder_create, width:%d height:%d",width, height);
+    VDPAU_DBG(1, "vdp_decoder_create, width:%d height:%d",width, height);
 
     int pptype, dec_freq=270;
 
@@ -196,8 +212,8 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 
 	dec->device = dev;
 	dec->profile = profile;
-	dec->width = width;
-	dec->height = height;
+	dec->dec_width = width;
+	dec->dec_height = height;
 
 	dev->src_width = width;
 	dev->src_height = height;
@@ -210,6 +226,7 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 	case VDP_DECODER_PROFILE_MPEG2_SIMPLE:
 	case VDP_DECODER_PROFILE_MPEG2_MAIN:
 		ret = new_decoder_mpeg2(dec);
+		pptype = PP_PIPELINED_DEC_TYPE_MPEG2;
 		dec_freq = 300;
 		break;
 
@@ -219,6 +236,7 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 //	case VDP_DECODER_PROFILE_H264_CONSTRAINED_BASELINE:
 //	case VDP_DECODER_PROFILE_H264_CONSTRAINED_HIGH:
 		ret = new_decoder_h264(dec);
+		pptype = PP_PIPELINED_DEC_TYPE_H264;
 		dec_freq = 300;
 		break;
 
@@ -247,19 +265,27 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 
 	dec->streamMem.size = 4096 * 250; //TODO check 1Mb
 	if(DWLMallocLinear(dec->DWLinstance, dec->streamMem.size, &dec->streamMem) != DWL_OK){
-	    VDPAU_ERR("vdp_decoder_create: alloc failed");
+	    VDPAU_ERR("alloc failed");
 	    goto err_decoder;
 	}
-/*
+
+	PPResult ppret;
 	if ((ppret = PPInit(&dec->pp)) != PP_OK) {
+	    dec->pp = NULL;
+	    VDPAU_ERR("Error PPInit:%d", ppret);
+	}else{
+	    if((ppret = PPDecCombinedModeEnable(dec->pp, dec->pDecInst, pptype)) != PP_OK) {
+		VDPAU_ERR("Error PPDecCombinedModeEnable:%d", ppret);
+		PPRelease(dec->pp);
+		dec->pp = NULL;
+	    }
+	}
 
-	if ((ppret = PPDecCombinedModeEnable(dec->pp, dec->pDecInst, pptype)) != PP_OK) {
+//	dec->crop_width = width;
+//	dec->crop_height = height;
 
+	dec->rotation = PP_ROTATION_NONE;
 
-	dec->streamMem.size = 1920*1080*4;
-	if(DWLMallocLinear(dec->DWLinstance, dec->streamMem.size, &dec->streamMem) != DWL_OK){
-
-*/
 	dec->smBufLen = 0;
 
 	DWLSetHWFreq(dec_freq);
@@ -310,10 +336,10 @@ VdpStatus vdp_decoder_get_parameters(VdpDecoder decoder,
 		*profile = dec->profile;
 
 	if (width)
-		*width = dec->width;
+		*width = dec->dec_width;
 
 	if (height)
-		*height = dec->height;
+		*height = dec->dec_height;
 
 	return VDP_STATUS_OK;
 }
@@ -343,10 +369,10 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
 		pos += bitstream_buffers[i].bitstream_bytes;
 	}
 
-	VDPAU_DBG(4, "vdp_decoder_render: InLen:%d smBufLen:%d\n", pos, dec->smBufLen);
+	VDPAU_DBG(4, "vdp_decoder_render: InLen:%d smBufLen:%d struct_version:%d\n", pos, dec->smBufLen, bitstream_buffers[0].struct_version);
 	dec->smBufLen += pos;
 
-//	if ((dec->smBufLen > dec->inbuf_thresh)/* || (x170->codec == HT_VIDEO_VC1)*/) {
+//	if ((dec->smBufLen > dec->inbuf_thresh)/* || (dec->codec == HT_VIDEO_VC1)*/) {
 	pos = dec->smBufLen;
 	ret = dec->decode(dec, picture_info, &pos, vid);
 	if(pos){

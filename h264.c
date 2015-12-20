@@ -39,14 +39,15 @@ typedef struct
     SPS_t pSeqParamSet;
     PPS_t pPicParamSet;
     u32 picNumber;
-    u32 width;
-    u32 height;
+//    u32 width;
+//    u32 height;
     Bool FirstTime;
     H264DecInput decIn;
     H264DecOutput decOut;
     H264DecInfo decInfo;
     H264DecPicture decPic;
     Bool ThereArePic;
+//    int ThereArePicNum;
 } h264_private_t;
 
 static void h264_private_free(decoder_ctx_t *decoder)
@@ -90,10 +91,10 @@ static void h264_init_header(decoder_ctx_t *decoder, VdpPictureInfoH264 const *i
 //info.h264.delta_pic_order_always_zero_flag = h->sps.delta_pic_order_always_zero_flag;
     decoder_p->pSeqParamSet.direct8x8InferenceFlag = info->direct_8x8_inference_flag;
 //info.h264.direct_8x8_inference_flag  = h->sps.direct_8x8_inference_flag;
-    decoder_p->pSeqParamSet.picWidthInMbs = (decoder->width+15) / 16;
+    decoder_p->pSeqParamSet.picWidthInMbs = (decoder->device->src_width+15) / 16;
 //TODO check
 //    if (info->frame_mbs_only_flag)
-	decoder_p->pSeqParamSet.picHeightInMbs = (decoder->height+15) / 16;
+	decoder_p->pSeqParamSet.picHeightInMbs = (decoder->device->src_height+15) / 16;
 //    else
 //	decoder_p->pSeqParamSet.picHeightInMbs = ((decoder->height / 2)+15) / 16;
 
@@ -213,7 +214,7 @@ static void h264_error(int err)
     default:
 	err_name = "H264DEC_UNKNOWN_ERROR";
     }
-    VDPAU_ERR("play_h264: decode error (%d) %s\n", err, err_name);
+    VDPAU_ERR("decode error (%d) %s\n", err, err_name);
 }
 
 static VdpStatus h264_decode(decoder_ctx_t *decoder,
@@ -234,22 +235,28 @@ static VdpStatus h264_decode(decoder_ctx_t *decoder,
     if(decoder_p->FirstTime){
 	h264_init_header(decoder, info);
 	decoder_p->FirstTime = False;
+    decoder_p->decIn.skipNonReference = PROP_DEFAULT_SKIP_NON_REFERENCE;
+    decoder_p->decIn.picId = 0;
+
     }
 
-/*    uint64_t ltmr = get_time();
+#if DBG_LEVEL == 4
+    uint64_t ltmr = get_time();
     int dt = (ltmr - output->device->tmr)/1000000;
-    VDPAU_DBG("H264 stream len ******* %d ******** w:%d h:%d time:%d\n", *len, decoder->width, decoder->height,dt);
-*/
+    VDPAU_DBG(1, "H264 *******  time:%d\n", dt);
+#endif
+
     if(decoder_p->ThereArePic){
+//	decoder_p->ThereArePicNum++;
 	VDPAU_DBG(4, "**ThereArePic detected\n");
 	goto doflush;
     }
 
+//    decoder_p->ThereArePicNum = 0;
+
     decoder_p->decIn.pStream = (u8 *) decoder->streamMem.virtualAddress;
     decoder_p->decIn.streamBusAddress = decoder->streamMem.busAddress;
     decoder_p->decIn.dataLen = *len;
-    decoder_p->decIn.skipNonReference = PROP_DEFAULT_SKIP_NON_REFERENCE;
-    decoder_p->decIn.picId = 0;
 
 donext:
     decoder_p->decIn.picId = decoder_p->picNumber;
@@ -261,13 +268,10 @@ donext:
 	SetFormat(output, decoder_p->decInfo.outputFormat);
 	VDPAU_DBG(1, "play_h264: H264 stream, %dx%d format %x\n",
 	    decoder_p->decInfo.picWidth, decoder_p->decInfo.picHeight, decoder_p->decInfo.outputFormat);
-	decoder_p->width = decoder_p->decInfo.picWidth;
-	decoder_p->height = decoder_p->decInfo.picHeight;
-/*	if (decoder->pp)
-	    gst_x170_ppsetconfig(x170,
-		         decInfo.outputFormat,
-		         &decoder_p->width, &decoder_p->height, 0);
-*/
+	decoder->dec_width = decoder_p->decInfo.picWidth;
+	decoder->dec_height = decoder_p->decInfo.picHeight;
+	if (decoder->pp)
+	    vdpPPsetConfig(decoder, decoder_p->decInfo.outputFormat, 0);
 	break;
     case H264DEC_ADVANCED_TOOLS:/* the decoder has to reallocate ressources */
     case H264DEC_NONREF_PIC_SKIPPED:
@@ -279,26 +283,41 @@ donext:
 doflush:
 	while (H264DecNextPicture(decoder_p->h264dec, &decoder_p->decPic, forceflush) == H264DEC_PIC_RDY)
 	{
-
-/*	    ltmr = get_time();
+	    qt->PicBalance++;
+#if DBG_LEVEL == 4
+	    ltmr = get_time();
 	    dt = (ltmr - output->device->tmr)/1000000;
-	    VDPAU_DBG( "play_h264: decoded picture %d time:%d mS\n", decoder_p->picNumber, dt);
-*/
-	    int length = decoder_p->width * decoder_p->height;
-	    OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
-		    (u8 *)(decoder_p->decPic.pOutputPicture)+length,
-		    decoder_p->width, decoder->width,
-		    decoder_p->width, decoder_p->height);
+	    VDPAU_DBG(4, "play_h264: decoded picture %d PicBalance:%d time:%d mS\n", decoder_p->picNumber, qt->PicBalance, dt);
+#endif
+	    if(qt->PicBalance < (MEMPG_MAX_CNT -2)){
+		if(decoder->pp){
+		    vdpPPsetOutBuf( GetMemBlkForPut(qt), decoder);
+		}else{
+		    uint32_t length = decoder->dec_width * decoder->dec_height;
+		    OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,
+			(uint8_t *)decoder_p->decPic.pOutputPicture+length,
+			decoder->dec_width, decoder->device->src_width,
+			decoder->dec_width, decoder->dec_height);
+		}
+#if DBG_LEVEL == 4
+int tms = (get_time() - output->device->tmr)/1000000;
+	    VDPAU_DBG(4, "play_h264: ---time:%d mS\n", tms);
+#endif
 
-	    if(qt->FbFilledCnt >= (MEMPG_MAX_CNT)){
+	    }else{
+		qt->PicBalance--;
+		VDPAU_DBG(4, "Drop pic\n");
+	    }
+
+	    if(qt->FbFilledCnt >= MEMPG_MAX_CNT/* || tms > 30*/){
 		VDPAU_DBG(4, "Buff full+++++++\n");
 		*len = 0;
 		return VDP_STATUS_OK;
 	    }
 
 	}
-	decoder_p->ThereArePic = False;
 
+	decoder_p->ThereArePic = False;
 	break;
     case H264DEC_STRM_PROCESSED:
 	/* input stream processed but no picture ready */
@@ -319,7 +338,9 @@ doflush:
 
 //    VDPAU_DBG("H264 stream +++++ decRet:%d  out_left:%d in_len:%d\n", decoder_p->decRet, decoder_p->decOut.dataLeft, decoder_p->decIn.dataLen);
 
-    if (decoder_p->decOut.dataLeft > 0) {
+int tms = (get_time() - output->device->tmr)/1000000;
+
+    if (decoder_p->decOut.dataLeft > 0 && tms < 30) {
 	decoder_p->decIn.dataLen = decoder_p->decOut.dataLeft;
 	decoder_p->decIn.pStream = decoder_p->decOut.pStrmCurrPos;
 	decoder_p->decIn.streamBusAddress = decoder_p->decOut.strmCurrBusAddress;
@@ -333,7 +354,11 @@ doflush:
 
     *len = (u8 *)decoder_p->decOut.pStrmCurrPos - (u8 *)decoder->streamMem.virtualAddress;
 //    VDPAU_DBG("H264 stream *+*+*+*+ decRet:%d  out_left:%d in_len:%d len:%d\n", decRet, decOut.dataLeft, decIn.dataLen, *len);
-
+#if DBG_LEVEL == 4
+    ltmr = get_time();
+    dt = (ltmr - output->device->tmr)/1000000;
+    VDPAU_DBG(4, "H264 *******  time:%d\n", dt);
+#endif
     return VDP_STATUS_OK;
 }
 
@@ -350,7 +375,7 @@ VdpStatus new_decoder_h264(decoder_ctx_t *decoder)
                          PROP_DEFAULT_USE_DISPLAY_SMOOTHING,
                          PROP_DEFAULT_DPB_FLAGS);
     if (ret != H264DEC_OK){
-	VDPAU_ERR("H264DecInit error:%d",ret);
+	VDPAU_ERR("Init error:%d",ret);
 	goto err_free;
     }
 
@@ -358,6 +383,7 @@ VdpStatus new_decoder_h264(decoder_ctx_t *decoder)
     decoder_p->FirstTime = True;
 
     decoder_p->ThereArePic = False;
+//    decoder_p->ThereArePicNum = 0;
 
     decoder->decode = h264_decode;
     decoder->private = decoder_p;

@@ -56,9 +56,11 @@ int AllocMemPg(queue_target_ctx_t *qt, Bool init)
 	ret =-3;
 	goto err2;
     }
-    FbPtr->pYUVMapMemBuf = FbPtr->pMapMemBuf + OvlGetYUVoffsetMemPg(FbPtr->pMemBuf);
-    qt->FbAllCnt++;
+//    FbPtr->pYUVMapMemBuf = FbPtr->pMapMemBuf + OvlGetYUVoffsetMemPg(FbPtr->pMemBuf);
+    FbPtr->UVoffset = OvlGetUVoffsetMemPg(FbPtr->pMemBuf);
+    FbPtr->PhyAddr = OvlGetPhyAddrMemPg(FbPtr->pMemBuf);
 
+    qt->FbAllCnt++;
     if(init){
 	FbPtr->Next = FbPtr;
 	qt->PutFbPtr = FbPtr;
@@ -108,21 +110,27 @@ void FreeAllMemPg(queue_target_ctx_t *qt)
     return;
 }
 
-OvlMemPgPtr GetMemPgForPut(queue_target_ctx_t *qt)
+mem_fb_t *GetMemBlkForPut(queue_target_ctx_t *qt)
 {
     if(qt->FbFilledCnt < qt->FbAllCnt || !AllocPhyMemPg(qt)){
 	qt->PutFbPtr = qt->PutFbPtr->Next;
 	qt->FbFilledCnt++;
     }
 
-    VDPAU_DBG(3, "GetMemPgForPut FbFilledCnt: %d  %p",qt->FbFilledCnt, qt->PutFbPtr);
+    VDPAU_DBG(3, "GetMemBlkForPut FbFilledCnt: %d  %p",qt->FbFilledCnt, qt->PutFbPtr);
 
+    return qt->PutFbPtr;
+}
+
+OvlMemPgPtr GetMemPgForPut(queue_target_ctx_t *qt)
+{
+    GetMemBlkForPut(qt);
     return qt->PutFbPtr->pMemBuf;
 }
 
 OvlMemPgPtr GetMemPgForDisp(queue_target_ctx_t *qt)
 {
-    if(qt->FbFilledCnt > 1 ){
+    if(qt->FbFilledCnt > 1 && qt->DispFbPtr->Next != qt->PutFbPtr){
 	qt->DispFbPtr = qt->DispFbPtr->Next;
 	qt->FbFilledCnt--;
     }
@@ -179,7 +187,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 	if(!dev->src_width || !dev->src_height)
 	    qt->MemPgSize = MEMPG_DEF_SIZE;
 	else
-	    qt->MemPgSize = (dev->src_width * dev->src_height * 2) + (10 * 4096);//TODO Only for YUV modes
+	    qt->MemPgSize = (((dev->src_width+7) &~7) * ((dev->src_height+7) &~7) * 2) + (10 * 4096);//TODO Only for YUV modes
 
 	if(InitPhyMemPg(qt)) //new MemPg assigned to PutFbPtr
 	    goto out_fb;
@@ -374,7 +382,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     if (!q)
 	return VDP_STATUS_INVALID_HANDLE;
 
-#ifdef DEBUG
+#if DBG_LEVEL == 4
 uint64_t ltmr = get_time();
 int dt = (ltmr - q->device->tmr)/1000000;
     VDPAU_DBG(4, "vdp_presentation_queue_display: time:%d mS\n", dt);
@@ -386,6 +394,8 @@ int dt = (ltmr - q->device->tmr)/1000000;
 /*    if (earliest_presentation_time != 0)
 	VDPAU_DBG_ONCE("Presentation time not supported");
 */
+//    if(q->target->PicBalance)
+	q->target->PicBalance--;
 
     if (os->vs)
     {
@@ -424,8 +434,10 @@ int dt = (ltmr - q->device->tmr)/1000000;
 	    WinNeedClr = True;
 	    XClearWindow(q->device->display, q->target->drawable);
 	    
-	    int Src_w = os->video_src_rect.x1 - os->video_src_rect.x0;
-	    int Src_h = os->video_src_rect.y1 - os->video_src_rect.y0;
+//	    int Src_w = os->video_src_rect.x1 - os->video_src_rect.x0;
+//	    int Src_h = os->video_src_rect.y1 - os->video_src_rect.y0;
+	    int Src_w = q->device->src_width;
+	    int Src_h = q->device->src_height;
 
 	    if(q->device->osd_enabled){
 		q->target->OSDdst = q->target->OSDmmap + y * q->target->OSD_pitch + x * q->target->OSD_bpp;
@@ -468,8 +480,7 @@ int dt = (ltmr - q->device->tmr)/1000000;
 /*	if (!q->device->osd_enabled)
 		return VDP_STATUS_OK;
 */
-
-#ifdef DEBUG
+#if DBG_LEVEL == 4
 ltmr = get_time();
 dt = (ltmr - q->device->tmr)/1000000;
     VDPAU_DBG(4, "---vdp_presentation_queue_display: time:%d mS\n", dt);
