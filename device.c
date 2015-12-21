@@ -28,6 +28,10 @@
 #include "vdpau_private.h"
 #include <inc/dwl.h>
 
+#ifdef DEBUG
+int Dbg_Level=2;
+#endif
+
 VdpStatus vdp_imp_device_create_x11(Display *display,
                                     int screen,
                                     VdpDevice *device,
@@ -40,6 +44,14 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
 	device_ctx_t *dev = handle_create(sizeof(*dev), device);
 	if (!dev)
 		return VDP_STATUS_RESOURCES;
+
+#ifdef DEBUG
+	char *env_vdpau_osd = getenv("VDPAU_DBG");
+	if (env_vdpau_osd){
+	    Dbg_Level = atoi(env_vdpau_osd);
+	    VDPAU_DBG(1, "VDPAU_DBG:%s-%d", env_vdpau_osd, Dbg_Level );
+	}
+#endif
 
 	dev->display = XOpenDisplay(XDisplayString(display));
 

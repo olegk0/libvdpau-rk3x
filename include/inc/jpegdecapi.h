@@ -193,6 +193,8 @@ extern "C"
     4. Function prototypes
 ------------------------------------------------------------------------------*/
 
+const void *JpegToDWLinstance(JpegDecInst pDecInst);
+
 /* Version information */
     JpegDecApiVersion JpegGetAPIVersion(void);
 

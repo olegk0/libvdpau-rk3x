@@ -47,17 +47,29 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
 	if (!vs)
 		return VDP_STATUS_RESOURCES;
 
+	queue_target_ctx_t *qt = dev->queue_target;
+
 	vs->device = dev;
 	vs->width = width;
 	vs->height = height;
 	vs->chroma_type = chroma_type;
 
-	if(!dev->src_width || !dev->src_height){
-	    dev->src_width = width;
-	    dev->src_height = height;
-	}
+	if(!qt->MemPgSize){
+	    if(!dev->src_width || !dev->src_height){
+		dev->src_width = width;
+		dev->src_height = height;
+	    }
 
-	vs->luma_size = ALIGN(width, 32) * ALIGN(height, 32);
+	    if(!dev->src_width || !dev->src_height)
+		qt->MemPgSize = MEMPG_DEF_SIZE;
+	    else
+		qt->MemPgSize = (((dev->src_width+7) &~7) * ((dev->src_height+7) &~7) * 2) + (10 * 4096);//TODO Only for YUV modes
+
+	    if(InitPhyMemPg(qt) || AllocPhyMemPg(qt)){ //alloc second fb
+		FreeAllMemPg(qt);
+		return VDP_STATUS_RESOURCES;
+	    }
+	}
 
 	VDPAU_DBG(2, "vdp_video_surface_create:ok");
 	return VDP_STATUS_OK;
@@ -116,18 +128,19 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(VdpVideoSurface surface,
 	if (destination_pitches[0] < vs->width || destination_pitches[1] < vs->width / 2)
 		return VDP_STATUS_ERROR;
 
+	mem_fb_t *mb = vs->device->queue_target->DispFbPtr;
 	switch (destination_ycbcr_format)
 	{
 	case VDP_YCBCR_FORMAT_NV12:
-		tiled_to_planar(vs->yuv->data, destination_data[0], destination_pitches[0], vs->width, vs->height);
-		tiled_to_planar(vs->yuv->data + vs->luma_size, destination_data[1], destination_pitches[1], vs->width, vs->height / 2);
+		tiled_to_planar(mb->pMapMemBuf, destination_data[0], destination_pitches[0], vs->width, vs->height);
+		tiled_to_planar(mb->pMapMemBuf + mb->UVoffset, destination_data[1], destination_pitches[1], vs->width, vs->height / 2);
 		return VDP_STATUS_OK;
 
 	case VDP_YCBCR_FORMAT_YV12:
 		if (destination_pitches[2] != destination_pitches[1])
 			return VDP_STATUS_ERROR;
-		tiled_to_planar(vs->yuv->data, destination_data[0], destination_pitches[0], vs->width, vs->height);
-		tiled_deinterleave_to_planar(vs->yuv->data + vs->luma_size, destination_data[2], destination_data[1], destination_pitches[1], vs->width, vs->height / 2);
+		tiled_to_planar(mb->pMapMemBuf, destination_data[0], destination_pitches[0], vs->width, vs->height);
+		tiled_deinterleave_to_planar(mb->pMapMemBuf + mb->UVoffset, destination_data[2], destination_data[1], destination_pitches[1], vs->width, vs->height / 2);
 		return VDP_STATUS_OK;
 	}
 

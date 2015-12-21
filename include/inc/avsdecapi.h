@@ -171,6 +171,7 @@ extern "C"
 /*------------------------------------------------------------------------------
     Prototypes of Decoder API functions
 ------------------------------------------------------------------------------*/
+const void *AvsToDWLinstance(AvsDecInst decInst);
 
     AvsDecApiVersion AvsDecGetAPIVersion(void);
 

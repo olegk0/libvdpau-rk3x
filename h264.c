@@ -39,15 +39,12 @@ typedef struct
     SPS_t pSeqParamSet;
     PPS_t pPicParamSet;
     u32 picNumber;
-//    u32 width;
-//    u32 height;
     Bool FirstTime;
     H264DecInput decIn;
     H264DecOutput decOut;
     H264DecInfo decInfo;
     H264DecPicture decPic;
     Bool ThereArePic;
-//    int ThereArePicNum;
 } h264_private_t;
 
 static void h264_private_free(decoder_ctx_t *decoder)
@@ -235,24 +232,20 @@ static VdpStatus h264_decode(decoder_ctx_t *decoder,
     if(decoder_p->FirstTime){
 	h264_init_header(decoder, info);
 	decoder_p->FirstTime = False;
-    decoder_p->decIn.skipNonReference = PROP_DEFAULT_SKIP_NON_REFERENCE;
-    decoder_p->decIn.picId = 0;
-
+	decoder_p->decIn.skipNonReference = PROP_DEFAULT_SKIP_NON_REFERENCE;
+	decoder_p->decIn.picId = 0;
     }
 
-#if DBG_LEVEL == 4
+#ifdef DEBUG
     uint64_t ltmr = get_time();
     int dt = (ltmr - output->device->tmr)/1000000;
-    VDPAU_DBG(1, "H264 *******  time:%d\n", dt);
+    VDPAU_DBG(4, "H264 *******  time:%d\n", dt);
 #endif
 
     if(decoder_p->ThereArePic){
-//	decoder_p->ThereArePicNum++;
 	VDPAU_DBG(4, "**ThereArePic detected\n");
 	goto doflush;
     }
-
-//    decoder_p->ThereArePicNum = 0;
 
     decoder_p->decIn.pStream = (u8 *) decoder->streamMem.virtualAddress;
     decoder_p->decIn.streamBusAddress = decoder->streamMem.busAddress;
@@ -284,7 +277,7 @@ doflush:
 	while (H264DecNextPicture(decoder_p->h264dec, &decoder_p->decPic, forceflush) == H264DEC_PIC_RDY)
 	{
 	    qt->PicBalance++;
-#if DBG_LEVEL == 4
+#ifdef DEBUG
 	    ltmr = get_time();
 	    dt = (ltmr - output->device->tmr)/1000000;
 	    VDPAU_DBG(4, "play_h264: decoded picture %d PicBalance:%d time:%d mS\n", decoder_p->picNumber, qt->PicBalance, dt);
@@ -299,8 +292,8 @@ doflush:
 			decoder->dec_width, decoder->device->src_width,
 			decoder->dec_width, decoder->dec_height);
 		}
-#if DBG_LEVEL == 4
-int tms = (get_time() - output->device->tmr)/1000000;
+#ifdef DEBUG
+	    int tms = (get_time() - output->device->tmr)/1000000;
 	    VDPAU_DBG(4, "play_h264: ---time:%d mS\n", tms);
 #endif
 
@@ -354,7 +347,7 @@ int tms = (get_time() - output->device->tmr)/1000000;
 
     *len = (u8 *)decoder_p->decOut.pStrmCurrPos - (u8 *)decoder->streamMem.virtualAddress;
 //    VDPAU_DBG("H264 stream *+*+*+*+ decRet:%d  out_left:%d in_len:%d len:%d\n", decRet, decOut.dataLeft, decIn.dataLen, *len);
-#if DBG_LEVEL == 4
+#ifdef DEBUG
     ltmr = get_time();
     dt = (ltmr - output->device->tmr)/1000000;
     VDPAU_DBG(4, "H264 *******  time:%d\n", dt);
@@ -383,7 +376,6 @@ VdpStatus new_decoder_h264(decoder_ctx_t *decoder)
     decoder_p->FirstTime = True;
 
     decoder_p->ThereArePic = False;
-//    decoder_p->ThereArePicNum = 0;
 
     decoder->decode = h264_decode;
     decoder->private = decoder_p;

@@ -212,6 +212,8 @@ extern "C"
     Prototypes of Decoder API functions
 ------------------------------------------------------------------------------*/
 
+const void *VC1ToDWLinstance(VC1DecInst decInst);
+
     VC1DecApiVersion VC1DecGetAPIVersion(void);
 
     VC1DecBuild VC1DecGetBuild(void);

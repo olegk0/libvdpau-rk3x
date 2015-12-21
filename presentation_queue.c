@@ -29,10 +29,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 
-#define MEMPG_DEF_SIZE RK_WDPAU_WIDTH_MAX*RK_WDPAU_HEIGHT_MAX*4
 
-#define AllocPhyMemPg(qt) AllocMemPg(qt, False) //new MemPg assigned to PutFbPtr->Next
-#define InitPhyMemPg(qt) AllocMemPg(qt, True) //new MemPg assigned to PutFbPtr
 int AllocMemPg(queue_target_ctx_t *qt, Bool init)
 {
     int ret=-1;
@@ -122,12 +119,6 @@ mem_fb_t *GetMemBlkForPut(queue_target_ctx_t *qt)
     return qt->PutFbPtr;
 }
 
-OvlMemPgPtr GetMemPgForPut(queue_target_ctx_t *qt)
-{
-    GetMemBlkForPut(qt);
-    return qt->PutFbPtr->pMemBuf;
-}
-
 OvlMemPgPtr GetMemPgForDisp(queue_target_ctx_t *qt)
 {
     if(qt->FbFilledCnt > 1 && qt->DispFbPtr->Next != qt->PutFbPtr){
@@ -184,17 +175,6 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 	if (qt->VideoLayer == ERRORL)
 		goto out_layer;
 
-	if(!dev->src_width || !dev->src_height)
-	    qt->MemPgSize = MEMPG_DEF_SIZE;
-	else
-	    qt->MemPgSize = (((dev->src_width+7) &~7) * ((dev->src_height+7) &~7) * 2) + (10 * 4096);//TODO Only for YUV modes
-
-	if(InitPhyMemPg(qt)) //new MemPg assigned to PutFbPtr
-	    goto out_fb;
-
-	if(AllocPhyMemPg(qt)) //alloc second fb
-	    goto out_fb;
-
 	qt->OSDLayer = ERRORL;
 	if (dev->osd_enabled)
 	{
@@ -220,7 +200,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 		    }else{
 			qt->OSDdst = qt->OSDmmap;
 			VDPAU_DBG(2, "OSD lay init ok");
-			OvlEnable(qt->OSDLayer, 1);
+//			OvlEnable(qt->OSDLayer, 1);
 		    }
 		}
 	    }
@@ -231,7 +211,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 	XSetWindowBackground(dev->display, drawable, 0x0);
 
 	OvlSetColorKey(qt->OSDColorKey);
-	OvlEnable(qt->VideoLayer, 1);
+//	OvlEnable(qt->VideoLayer, 1);
 
 //	qt->disp_pitch = OvlGetVXresByLay(qt->VideoLayer);
         XGCValues gr_val;
@@ -382,9 +362,8 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     if (!q)
 	return VDP_STATUS_INVALID_HANDLE;
 
-#if DBG_LEVEL == 4
-uint64_t ltmr = get_time();
-int dt = (ltmr - q->device->tmr)/1000000;
+#ifdef DEBUG
+int dt = (get_time() - q->device->tmr)/1000000;
     VDPAU_DBG(4, "vdp_presentation_queue_display: time:%d mS\n", dt);
 #endif
     output_surface_ctx_t *os = handle_get(surface);
@@ -416,6 +395,7 @@ int dt = (ltmr - q->device->tmr)/1000000;
 		break;
 	    }
 	    OvlSetupFb(q->target->VideoLayer, RK_FORMAT_DEFAULT, q->DispMode, 0, 0);
+	    OvlEnable(q->target->VideoLayer, 1);
 	}
 
 	Window c;
@@ -480,8 +460,8 @@ int dt = (ltmr - q->device->tmr)/1000000;
 /*	if (!q->device->osd_enabled)
 		return VDP_STATUS_OK;
 */
-#if DBG_LEVEL == 4
-ltmr = get_time();
+#ifdef DEBUG
+uint64_t ltmr = get_time();
 dt = (ltmr - q->device->tmr)/1000000;
     VDPAU_DBG(4, "---vdp_presentation_queue_display: time:%d mS\n", dt);
 q->device->tmr = ltmr;

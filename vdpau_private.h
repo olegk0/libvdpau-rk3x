@@ -26,7 +26,6 @@
 #define __VDPAU_PRIVATE_H__
 
 #define DEBUG
-#define DBG_LEVEL 2
 
 #define MAX_HANDLES 64
 #define VBV_SIZE (1 * 1024 * 1024)
@@ -42,6 +41,11 @@
 #define MEMPG_MAX_CNT 8
 #define RK_WDPAU_WIDTH_MAX 1920
 #define RK_WDPAU_HEIGHT_MAX 1080
+#define MEMPG_DEF_SIZE RK_WDPAU_WIDTH_MAX*RK_WDPAU_HEIGHT_MAX*4
+
+#ifdef DEBUG
+extern int Dbg_Level;
+#endif
 
 typedef struct queue_target_ctx queue_target_ctx;
 
@@ -99,20 +103,14 @@ typedef struct queue_target_ctx
 	int PicBalance;
 } queue_target_ctx_t;
 
-typedef struct
-{
-	int ref_count;
-	void *data;
-} yuv_data_t;
-
 typedef struct video_surface_ctx_struct
 {
 	device_ctx_t *device;
 	uint32_t width, height;
 	VdpChromaType chroma_type;
 	VdpYCbCrFormat source_format;
-	yuv_data_t *yuv;
-	uint32_t luma_size;
+//	yuv_data_t *yuv;
+//	uint32_t luma_size;
 	void *decoder_private;
 	void (*decoder_private_free)(struct video_surface_ctx_struct *surface);
 } video_surface_ctx_t;
@@ -180,7 +178,6 @@ typedef struct
 	device_ctx_t *device;
 	rgba_surface_t rgba;
 	video_surface_ctx_t *vs;
-	yuv_data_t *yuv;
 	VdpRect video_src_rect, video_dst_rect;
 	int csc_change;
 	float brightness;
@@ -224,7 +221,7 @@ typedef struct
 #ifdef DEBUG
 #include <stdio.h>
 
-#define VDPAU_DBG(dbg_lvl, format, ...) {if(dbg_lvl <= DBG_LEVEL ) fprintf(stderr, "[VDPAU RK3X] " format "\n", ##__VA_ARGS__);}
+#define VDPAU_DBG(dl, format, ...) {if(dl <= Dbg_Level ) fprintf(stderr, "[VDPAU RK3X] " format "\n", ##__VA_ARGS__);}
 #define VDPAU_DBG_ONCE(format, ...) do { static uint8_t __once; if (!__once) { fprintf(stderr, "[VDPAU RK3X] " format "\n", ##__VA_ARGS__); __once = 1; } } while(0)
 #else
 #define VDPAU_DBG(dbg_lvl, format, ...)
@@ -240,8 +237,13 @@ typedef struct
 #define PROP_DEFAULT_NUM_FRAME_BUFFS 0
 #define PROP_DEFAULT_DPB_FLAGS DEC_DPB_ALLOW_FIELD_ORDERING
 
-OvlMemPgPtr GetMemPgForPut(queue_target_ctx_t *qt);
+
+#define AllocPhyMemPg(qt) AllocMemPg(qt, False) //new MemPg assigned to PutFbPtr->Next
+#define InitPhyMemPg(qt) AllocMemPg(qt, True) //new MemPg assigned to PutFbPtr
+int AllocMemPg(queue_target_ctx_t *qt, Bool init);
+void FreeAllMemPg(queue_target_ctx_t *qt);
 mem_fb_t *GetMemBlkForPut(queue_target_ctx_t *qt);
+#define GetMemPgForPut(qt) GetMemBlkForPut(qt)->pMemBuf
 
 VdpStatus new_decoder_mpeg2(decoder_ctx_t *decoder);
 VdpStatus new_decoder_h264(decoder_ctx_t *decoder);

@@ -132,6 +132,8 @@ extern "C"
 /*------------------------------------------------------------------------------
     Prototypes of Decoder API functions
 ------------------------------------------------------------------------------*/
+const void *VP6ToDWLinstance(VP6DecInst decInst);
+
     VP6DecApiVersion VP6DecGetAPIVersion(void);
 
     VP6DecBuild VP6DecGetBuild(void);

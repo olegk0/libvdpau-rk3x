@@ -172,6 +172,8 @@ extern "C"
 /*------------------------------------------------------------------------------
     Prototypes of Decoder API functions
 ------------------------------------------------------------------------------*/
+const void *VP8ToDWLinstance(VP8DecInst decInst);
+
     VP8DecApiVersion VP8DecGetAPIVersion(void);
 
     VP8DecBuild VP8DecGetBuild(void);
