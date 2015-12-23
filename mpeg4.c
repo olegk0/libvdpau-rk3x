@@ -99,7 +99,7 @@ static void mpeg4_error(int err)
     default:
 	err_name = "MP4DEC_UNKNOWN_ERROR";
     }
-    VDPAU_ERR("decode error (%d) %s\n", err, err_name);
+    VDPAU_ERR("decode error (%d) %s", err, err_name);
 }
 
 static void SetFormat(video_surface_ctx_t *output, uint32_t format)
@@ -140,10 +140,10 @@ static VdpStatus mpeg4_decode(decoder_ctx_t *decoder,
 		return VDP_STATUS_ERROR;
 	}
 */
-    VDPAU_DBG(4, "MPEG4 stream len ******* %d ********\n", *len);
+    VDPAU_DBG(5, "stream len ******* %d ********", *len);
 
     if(decoder_p->ThereArePic){
-	VDPAU_DBG(4, "**ThereArePic detected\n");
+	VDPAU_DBG(4, "**ThereArePic detected");
 	goto doflush;
     }
 
@@ -160,13 +160,13 @@ donext:
 	// read stream info 
 	infoRet = MP4DecGetInfo(decoder_p->mpeg4dec, &decoder_p->decInfo);
 	SetFormat( output, decoder_p->decInfo.outputFormat);
-	VDPAU_DBG(1, "MPEG4 stream, %dx%d, interlaced %d, format %x\n",
+	VDPAU_DBG(1, "MPEG4 stream, %dx%d, interlaced %d, format %x",
 	    decoder_p->decInfo.frameWidth, decoder_p->decInfo.frameHeight,
 	    decoder_p->decInfo.interlacedSequence, decoder_p->decInfo.outputFormat);
 	decoder->dec_width = decoder_p->decInfo.frameWidth;
 	decoder->dec_height = decoder_p->decInfo.frameHeight;
 	if (decoder->pp)
-	    vdpPPsetConfig(decoder, decoder_p->decInfo.outputFormat, decoder_p->decInfo.interlacedSequence);
+	    vdpPPsetConfig(decoder, output, decoder_p->decInfo.outputFormat, decoder_p->decInfo.interlacedSequence);
 
 	break;
     case MP4DEC_PIC_DECODED:
@@ -179,7 +179,7 @@ doflush:
 
 	    if ((decoder_p->decPic.fieldPicture && secondField) || !decoder_p->decPic.fieldPicture) {
 		qt->PicBalance++;
-		VDPAU_DBG(4 ,"play_mpeg4: decoded picture %d, PicBalance:%d mpeg4 timestamp: %d:%d:%d:%d (%d)\n",
+		VDPAU_DBG(5 ,"play_mpeg4: decoded picture %d, PicBalance:%d mpeg4 timestamp: %d:%d:%d:%d (%d)",
 			 decoder_p->picNumber, qt->PicBalance,
 			 decoder_p->decPic.timeCode.hours, decoder_p->decPic.timeCode.minutes,
 			 decoder_p->decPic.timeCode.seconds, decoder_p->decPic.timeCode.timeIncr,
@@ -196,12 +196,12 @@ doflush:
 			uint32_t length = decoder->dec_width * decoder->dec_height;
 			OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
 			    decoder_p->decPic.pOutputPicture+length,
-			    decoder->dec_width, decoder->device->src_width,
+			    decoder->dec_width, qt->DSP_pitch,
 			    decoder->dec_width, decoder->dec_height);
 		    }
 		}else{
 		    qt->PicBalance--;
-		    VDPAU_DBG(4, "Drop pic\n");
+		    VDPAU_DBG(3, "Drop pic");
 		}
 
 	    }
@@ -209,7 +209,7 @@ doflush:
 		secondField = 1;
 
         if(qt->FbFilledCnt >= (MEMPG_MAX_CNT)){
-	    VDPAU_DBG(4, "Buff full+++++++\n");
+	    VDPAU_DBG(5, "Buff full+++++++");
 	    *len = 0;
 	    return VDP_STATUS_OK;
         }
@@ -233,7 +233,7 @@ doflush:
     default:
 	// some kind of error, decoding cannot continue 
 	mpeg4_error(decRet);
-	VDPAU_DBG(4, "MPEG4 stream ERR ------ decRet:%d  out_left:%d in_len:%d\n", decRet, decoder_p->decOut.dataLeft, decoder_p->decIn.dataLen);
+	VDPAU_DBG(5, "stream ERR ------ decRet:%d  out_left:%d in_len:%d", decRet, decoder_p->decOut.dataLeft, decoder_p->decIn.dataLen);
 	return VDP_STATUS_ERROR;
     }
 

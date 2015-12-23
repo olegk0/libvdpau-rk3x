@@ -29,7 +29,7 @@
 #include <inc/dwl.h>
 
 #ifdef DEBUG
-int Dbg_Level=2;
+int Dbg_Level=3;
 #endif
 
 VdpStatus vdp_imp_device_create_x11(Display *display,
@@ -37,7 +37,7 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
                                     VdpDevice *device,
                                     VdpGetProcAddress **get_proc_address)
 {
-	VDPAU_DBG(1, "vdp_imp_device_create_x11");
+	VDPAU_DBG(1, "");
 	if (!display || !device || !get_proc_address)
 		return VDP_STATUS_INVALID_POINTER;
 
@@ -46,7 +46,7 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
 		return VDP_STATUS_RESOURCES;
 
 #ifdef DEBUG
-	char *env_vdpau_osd = getenv("VDPAU_DBG");
+	char *env_vdpau_osd = getenv("VDPAU_DBGLVL");
 	if (env_vdpau_osd){
 	    Dbg_Level = atoi(env_vdpau_osd);
 	    VDPAU_DBG(1, "VDPAU_DBG:%s-%d", env_vdpau_osd, Dbg_Level );
@@ -57,8 +57,8 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
 
 	dev->screen = screen;
 
-	dev->src_width = 0;
-	dev->src_height = 0;
+//	dev->src_width = 0;
+//	dev->src_height = 0;
 
 /*	char *env_vdpau_osd = getenv("VDPAU_OSD");
 	if (env_vdpau_osd && strncmp(env_vdpau_osd, "1", 1) == 0)
@@ -67,7 +67,7 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
 
 	*get_proc_address = vdp_get_proc_address;
 
-	VDPAU_DBG(2, "vdp_imp_device_create_x11:ok");
+	VDPAU_DBG(2, "ok");
 	return VDP_STATUS_OK;
 }
 

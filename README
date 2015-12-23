@@ -23,3 +23,6 @@ and then for mplayer:
 or for mpv:
    $ mpv --vo=vdpau --hwdec=vdpau --hwdec-codecs=all [filename]
 
+
+for debug version
+export VDPAU_DBGLVL=0 ... 5

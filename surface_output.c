@@ -32,7 +32,7 @@ VdpStatus vdp_output_surface_create(VdpDevice device,
                                     VdpOutputSurface *surface)
 {
 	int ret = VDP_STATUS_OK;
-	VDPAU_DBG(1, "vdp_output_surface_create, format:%d:", rgba_format);
+	VDPAU_DBG(1, "format:%d:", rgba_format);
 	if (!surface)
 		return VDP_STATUS_INVALID_POINTER;
 
@@ -55,7 +55,7 @@ VdpStatus vdp_output_surface_create(VdpDevice device,
 		return ret;
 	}
 */
-	VDPAU_DBG(2, "vdp_output_surface_create:ok");
+	VDPAU_DBG(2, "ok");
 	return VDP_STATUS_OK;
 }
 
@@ -112,7 +112,7 @@ VdpStatus vdp_output_surface_put_bits_native(VdpOutputSurface surface,
                                              uint32_t const *source_pitches,
                                              VdpRect const *destination_rect)
 {
-    VDPAU_DBG(3, "vdp_output_surface_put_bits_native");
+    VDPAU_DBG(4, "");
 	output_surface_ctx_t *out = handle_get(surface);
 	if (!out)
 		return VDP_STATUS_INVALID_HANDLE;
@@ -129,7 +129,7 @@ VdpStatus vdp_output_surface_put_bits_indexed(VdpOutputSurface surface,
                                               VdpColorTableFormat color_table_format,
                                               void const *color_table)
 {
-//    VDPAU_DBG( "vdp_output_surface_put_bits_indexed, format:%d",color_table_format);
+    VDPAU_DBG(4, "format:%d",color_table_format);
     output_surface_ctx_t *out = handle_get(surface);
     if (!out)
 	return VDP_STATUS_INVALID_HANDLE;
@@ -191,7 +191,7 @@ VdpStatus vdp_output_surface_put_bits_y_cb_cr(VdpOutputSurface surface,
                                               VdpRect const *destination_rect,
                                               VdpCSCMatrix const *csc_matrix)
 {
-    VDPAU_DBG(3, "vdp_output_surface_put_bits_y_cb_cr, source_ycbcr_format:%d", source_ycbcr_format);
+    VDPAU_DBG(4, "source_ycbcr_format:%d", source_ycbcr_format);
 	output_surface_ctx_t *out = handle_get(surface);
 	if (!out)
 		return VDP_STATUS_INVALID_HANDLE;
@@ -207,7 +207,7 @@ VdpStatus vdp_output_surface_render_output_surface(VdpOutputSurface destination_
                                                    VdpOutputSurfaceRenderBlendState const *blend_state,
                                                    uint32_t flags)
 {
-    VDPAU_DBG(3, "vdp_output_surface_render_output_surface");
+    VDPAU_DBG(4, "");
     output_surface_ctx_t *out = handle_get(destination_surface);
     if (!out)
 	return VDP_STATUS_INVALID_HANDLE;
@@ -228,7 +228,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(VdpOutputSurface destination_
                                                    VdpOutputSurfaceRenderBlendState const *blend_state,
                                                    uint32_t flags)
 {
-    VDPAU_DBG(4, "vdp_output_surface_render_bitmap_surface");
+    VDPAU_DBG(5, "");
     output_surface_ctx_t *out = handle_get(destination_surface);
     if (!out)
 	return VDP_STATUS_INVALID_HANDLE;
@@ -287,7 +287,7 @@ VdpStatus vdp_output_surface_query_capabilities(VdpDevice device,
                                                 uint32_t *max_width,
                                                 uint32_t *max_height)
 {
-    VDPAU_DBG(2, "vdp_output_surface_query_capabilities, format:%d", surface_rgba_format);
+    VDPAU_DBG(2, "format:%d", surface_rgba_format);
 	if (!is_supported || !max_width || !max_height)
 		return VDP_STATUS_INVALID_POINTER;
 
@@ -307,7 +307,7 @@ VdpStatus vdp_output_surface_query_get_put_bits_native_capabilities(VdpDevice de
                                                                     VdpRGBAFormat surface_rgba_format,
                                                                     VdpBool *is_supported)
 {
-    VDPAU_DBG(2, "vdp_output_surface_query_get_put_bits_native_capabilities, format:%d", surface_rgba_format);
+    VDPAU_DBG(2, "format:%d", surface_rgba_format);
 	if (!is_supported)
 		return VDP_STATUS_INVALID_POINTER;
 
@@ -326,7 +326,7 @@ VdpStatus vdp_output_surface_query_put_bits_indexed_capabilities(VdpDevice devic
                                                                  VdpColorTableFormat color_table_format,
                                                                  VdpBool *is_supported)
 {
-    VDPAU_DBG(2, "vdp_output_surface_query_get_put_bits_indexed_capabilities, format:%d", surface_rgba_format);
+    VDPAU_DBG(2, " format:%d", surface_rgba_format);
 	if (!is_supported)
 		return VDP_STATUS_INVALID_POINTER;
 
@@ -344,7 +344,7 @@ VdpStatus vdp_output_surface_query_put_bits_y_cb_cr_capabilities(VdpDevice devic
                                                                  VdpYCbCrFormat bits_ycbcr_format,
                                                                  VdpBool *is_supported)
 {
-    VDPAU_DBG(2, "vdp_output_surface_query_put_bits_y_cb_cr_capabilities, format:%d", surface_rgba_format);
+    VDPAU_DBG(2, "format:%d", surface_rgba_format);
 	if (!is_supported)
 		return VDP_STATUS_INVALID_POINTER;
 

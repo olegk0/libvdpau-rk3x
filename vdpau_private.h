@@ -57,8 +57,8 @@ typedef struct
 	void *preemption_callback_context;
 	int osd_enabled;
 	uint64_t tmr;
-	uint32_t src_width;
-	uint32_t src_height;
+//	uint32_t src_width;
+//	uint32_t src_height;
 	struct queue_target_ctx *queue_target;
 } device_ctx_t;
 
@@ -94,6 +94,7 @@ typedef struct queue_target_ctx
 	uint32_t OSD_DispMode;
 	int FbAllCnt;
 	int FbFilledCnt;
+	uint32_t DSP_pitch;
 	mem_fb_t *DispFbPtr;
 	mem_fb_t *WorkFbPtr;
 	mem_fb_t *PutFbPtr;
@@ -221,10 +222,10 @@ typedef struct
 #ifdef DEBUG
 #include <stdio.h>
 
-#define VDPAU_DBG(dl, format, ...) {if(dl <= Dbg_Level ) fprintf(stderr, "[VDPAU RK3X] " format "\n", ##__VA_ARGS__);}
+#define VDPAU_DBG(dl, format, ...) {if(dl <= Dbg_Level ) fprintf(stderr, "[VDPAU RK3X](%s):" format "\n", __func__, ##__VA_ARGS__);}
 #define VDPAU_DBG_ONCE(format, ...) do { static uint8_t __once; if (!__once) { fprintf(stderr, "[VDPAU RK3X] " format "\n", ##__VA_ARGS__); __once = 1; } } while(0)
 #else
-#define VDPAU_DBG(dbg_lvl, format, ...)
+#define VDPAU_DBG(dl, dbg_lvl, format, ...)
 #define VDPAU_DBG_ONCE(format, ...)
 #endif
 
@@ -245,11 +246,13 @@ void FreeAllMemPg(queue_target_ctx_t *qt);
 mem_fb_t *GetMemBlkForPut(queue_target_ctx_t *qt);
 #define GetMemPgForPut(qt) GetMemBlkForPut(qt)->pMemBuf
 
+int SetupOut(queue_target_ctx_t *qt, OvlLayoutFormatType DstFrmt, uint32_t xres, uint32_t yres);
+
 VdpStatus new_decoder_mpeg2(decoder_ctx_t *decoder);
 VdpStatus new_decoder_h264(decoder_ctx_t *decoder);
 VdpStatus new_decoder_mpeg4(decoder_ctx_t *decoder);
 
-VdpStatus vdpPPsetConfig(decoder_ctx_t *dec, uint32_t pixformat, Bool interlaced);
+VdpStatus vdpPPsetConfig(decoder_ctx_t *dec, video_surface_ctx_t *output, uint32_t pixformat, Bool interlaced);
 VdpStatus vdpPPsetOutBuf(mem_fb_t *mempg, decoder_ctx_t *dec);
 uint64_t get_time(void);
 

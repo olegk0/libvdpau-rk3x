@@ -32,7 +32,11 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
                                    uint32_t height,
                                    VdpVideoSurface *surface)
 {
-	VDPAU_DBG(1, "vdp_video_surface_create, width:%d height:%d chroma_type:%d",width, height, chroma_type);
+	VDPAU_DBG(1, "width:%d height:%d chroma_type:%d",width, height, chroma_type);
+    /*VDP_CHROMA_TYPE_420
+     * VDP_CHROMA_TYPE_422
+     * VDP_CHROMA_TYPE_444
+     */
 	if (!surface)
 		return VDP_STATUS_INVALID_POINTER;
 
@@ -55,29 +59,33 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
 	vs->chroma_type = chroma_type;
 
 	if(!qt->MemPgSize){
-	    if(!dev->src_width || !dev->src_height){
+/*	    if(!dev->src_width || !dev->src_height){
 		dev->src_width = width;
 		dev->src_height = height;
 	    }
-
-	    if(!dev->src_width || !dev->src_height)
+*/
+/*	    if(!width || !height)
 		qt->MemPgSize = MEMPG_DEF_SIZE;
 	    else
-		qt->MemPgSize = (((dev->src_width+7) &~7) * ((dev->src_height+7) &~7) * 2) + (10 * 4096);//TODO Only for YUV modes
+*/
+		qt->MemPgSize = (((width+7) &~7) * ((height+7) &~7) * 2) + (10 * 4096);//TODO Only for YUV modes
+
+	    VDPAU_DBG(3, "MemPgSize:%d",qt->MemPgSize);
 
 	    if(InitPhyMemPg(qt) || AllocPhyMemPg(qt)){ //alloc second fb
 		FreeAllMemPg(qt);
 		return VDP_STATUS_RESOURCES;
 	    }
+	    SetupOut(qt, RK_FORMAT_YCrCb_NV12_SP, width , height);//For calculate dst pitch
 	}
 
-	VDPAU_DBG(2, "vdp_video_surface_create:ok");
+	VDPAU_DBG(2, "ok");
 	return VDP_STATUS_OK;
 }
 
 VdpStatus vdp_video_surface_destroy(VdpVideoSurface surface)
 {
-	VDPAU_DBG(1, "vdp_video_surface_destroy");
+	VDPAU_DBG(1, "");
 	video_surface_ctx_t *vs = handle_get(surface);
 	if (!vs)
 		return VDP_STATUS_INVALID_HANDLE;
@@ -95,7 +103,7 @@ VdpStatus vdp_video_surface_get_parameters(VdpVideoSurface surface,
                                            uint32_t *width,
                                            uint32_t *height)
 {
-	VDPAU_DBG(2, "vdp_video_surface_get_parameters");
+	VDPAU_DBG(2, "");
 	video_surface_ctx_t *vid = handle_get(surface);
 	if (!vid)
 		return VDP_STATUS_INVALID_HANDLE;
@@ -117,7 +125,7 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(VdpVideoSurface surface,
                                              void *const *destination_data,
                                              uint32_t const *destination_pitches)
 {
-	VDPAU_DBG(3, "vdp_video_surface_get_bits_y_cb_cr");
+	VDPAU_DBG(4, "");
 	video_surface_ctx_t *vs = handle_get(surface);
 	if (!vs)
 		return VDP_STATUS_INVALID_HANDLE;
@@ -152,7 +160,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
                                              void const *const *source_data,
                                              uint32_t const *source_pitches)
 {
-	VDPAU_DBG(3, "vdp_video_surface_put_bits_y_cb_cr, format:%d", source_ycbcr_format);
+	VDPAU_DBG(4, "format:%d", source_ycbcr_format);
 	int i;
 	const uint8_t *src;
 	uint8_t *dst;
@@ -166,21 +174,22 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 
 	vs->source_format = source_ycbcr_format;
 
-	OvlMemPgPtr CurMemBuf =  GetMemPgForPut(qt);
+	mem_fb_t *CurMemBuf =  GetMemBlkForPut(qt);
 
+	VDPAU_DBG(5, "spitch:%d dpitch:%d", source_pitches[0], qt->DSP_pitch);
 	switch (source_ycbcr_format)
 	{
 	case VDP_YCBCR_FORMAT_YUYV:
-	    OvlCopyPackedToFb(CurMemBuf, source_data[0], source_pitches[0], dev->src_width, vs->width, vs->height, False);
+	    OvlCopyPackedToFb(CurMemBuf->pMemBuf, source_data[0], source_pitches[0], qt->DSP_pitch, vs->width, vs->height, False);
 	    break;
 	case VDP_YCBCR_FORMAT_UYVY:
-	    OvlCopyPackedToFb(CurMemBuf, source_data[0], source_pitches[0], dev->src_width, vs->width, vs->height, True);
+	    OvlCopyPackedToFb(CurMemBuf->pMemBuf, source_data[0], source_pitches[0], qt->DSP_pitch, vs->width, vs->height, True);
 	    break;
 	case VDP_YCBCR_FORMAT_NV12:
-	    OvlCopyNV12SemiPlanarToFb(CurMemBuf, source_data[0], source_data[1], source_pitches[0], dev->src_width, vs->width, vs->height);
-		break;
+	    OvlCopyNV12SemiPlanarToFb(CurMemBuf->pMemBuf, source_data[0], source_data[1], source_pitches[0], qt->DSP_pitch, vs->width, vs->height);
+	    break;
 	case VDP_YCBCR_FORMAT_YV12:
-	    OvlCopyPlanarToFb(CurMemBuf, source_data[0], source_data[2], source_data[1], source_pitches[0], dev->src_width, vs->width, vs->height);
+	    OvlCopyPlanarToFb(CurMemBuf->pMemBuf, source_data[0], source_data[2], source_data[1], source_pitches[0], qt->DSP_pitch, vs->width, vs->height);
 	    break;
 	case VDP_YCBCR_FORMAT_Y8U8V8A8:
 	case VDP_YCBCR_FORMAT_V8U8Y8A8:
@@ -197,7 +206,7 @@ VdpStatus vdp_video_surface_query_capabilities(VdpDevice device,
                                                uint32_t *max_width,
                                                uint32_t *max_height)
 {
-	VDPAU_DBG(2, "vdp_video_surface_query_capabilities");
+	VDPAU_DBG(2, "");
 	if (!is_supported || !max_width || !max_height)
 		return VDP_STATUS_INVALID_POINTER;
 
@@ -217,7 +226,7 @@ VdpStatus vdp_video_surface_query_get_put_bits_y_cb_cr_capabilities(VdpDevice de
                                                                     VdpYCbCrFormat bits_ycbcr_format,
                                                                     VdpBool *is_supported)
 {
-	VDPAU_DBG(2, "vdp_video_surface_query_get_put_bits_y_cb_cr_capabilities");
+	VDPAU_DBG(2, "");
 	if (!is_supported)
 		return VDP_STATUS_INVALID_POINTER;
 

@@ -52,7 +52,7 @@ VdpStatus vdpPPsetOutBuf(mem_fb_t *mempg, decoder_ctx_t *dec)
     return VDP_STATUS_OK;
 }
 
-VdpStatus vdpPPsetConfig(decoder_ctx_t *dec, uint32_t pixformat, Bool interlaced)
+VdpStatus vdpPPsetConfig(decoder_ctx_t *dec, video_surface_ctx_t *output, uint32_t pixformat, Bool interlaced)
 {
     PPConfig ppconfig;
     PPResult ppret;
@@ -77,8 +77,8 @@ VdpStatus vdpPPsetConfig(decoder_ctx_t *dec, uint32_t pixformat, Bool interlaced
     ppconfig.ppInImg.vc1RangeMapCEnable = 0;
     ppconfig.ppInImg.vc1RangeMapCCoeff = 0;
 
-    dec->crop_width = ((dec->device->src_width > width ? width : dec->device->src_width) + 7) & ~7;
-    dec->crop_height= ((dec->device->src_height > height ? height : dec->device->src_height) + 7) & ~7;
+    dec->crop_width = ((output->width > width ? width : output->width) + 7) & ~7;
+    dec->crop_height= ((output->height > height ? height : output->height) + 7) & ~7;
 
     if (dec->crop_width != 0 || dec->crop_height != 0) {
 	ppconfig.ppInCrop.enable = 1;
@@ -160,11 +160,12 @@ VdpStatus vdpPPsetConfig(decoder_ctx_t *dec, uint32_t pixformat, Bool interlaced
 	*height = dec->output_height;
     } 
 */    
-    ppconfig.ppOutImg.width = width;
+//    ppconfig.ppOutImg.width = width;
+    ppconfig.ppOutImg.width = dec->device->queue_target->DSP_pitch;
     ppconfig.ppOutImg.height = height;
 
-    VDPAU_DBG(2, "PP: config.ppOutImg.width = %d, ppconfig.ppOutImg.height = %d", ppconfig.ppOutImg.width, ppconfig.ppOutImg.height);
-    VDPAU_DBG(2, "PP: dec->output_width = %d, dec->output_height = %d", dec->crop_width, dec->crop_height);
+    VDPAU_DBG(2, "ppOutImg.width = %d, ppOutImg.height = %d", ppconfig.ppOutImg.width, ppconfig.ppOutImg.height);
+    VDPAU_DBG(2, "output_width = %d, output_height = %d", dec->crop_width, dec->crop_height);
 
     mem_fb_t *mempg = GetMemBlkForPut(dec->device->queue_target);
     ppconfig.ppOutImg.bufferBusAddr = mempg->PhyAddr;
@@ -191,7 +192,7 @@ VdpStatus vdp_decoder_create(VdpDevice device,
                              uint32_t max_references,
                              VdpDecoder *decoder)
 {
-    VDPAU_DBG(1, "vdp_decoder_create, width:%d height:%d",width, height);
+    VDPAU_DBG(1, "width:%d height:%d",width, height);
 
     int pptype, dec_freq=270;
 
@@ -215,8 +216,8 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 	dec->dec_width = width;
 	dec->dec_height = height;
 
-	dev->src_width = width;
-	dev->src_height = height;
+//	dev->src_width = width;
+//	dev->src_height = height;
 
 	VdpStatus ret;
 
@@ -289,7 +290,7 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 	dec->smBufLen = 0;
 
 	DWLSetHWFreq(dec_freq);
-	VDPAU_DBG(2, "vdp_decoder_create:ok");
+	VDPAU_DBG(2, "ok");
 	return VDP_STATUS_OK;
 
 err_decoder:
@@ -302,7 +303,7 @@ err_ctx:
 
 VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
 {
-	VDPAU_DBG(2, "vdp_decoder_destroy");
+	VDPAU_DBG(2, "");
 	decoder_ctx_t *dec = handle_get(decoder);
 	if (!dec)
 		return VDP_STATUS_INVALID_HANDLE;
@@ -362,14 +363,16 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
 
 	for (i = 0; i < bitstream_buffer_count; i++)
 	{
-		if((pos + dec->smBufLen + bitstream_buffers[i].bitstream_bytes) > dec->streamMem.size)
+		if((pos + dec->smBufLen + bitstream_buffers[i].bitstream_bytes) > dec->streamMem.size){
+		    VDPAU_DBG(3, "input buffer overflow");
 		    break;
+		}
 //		    return VDP_STATUS_RESOURCES;
 		memcpy((u8 *)(dec->streamMem.virtualAddress) + pos + dec->smBufLen, bitstream_buffers[i].bitstream, bitstream_buffers[i].bitstream_bytes);
 		pos += bitstream_buffers[i].bitstream_bytes;
 	}
 
-	VDPAU_DBG(4, "vdp_decoder_render: InLen:%d smBufLen:%d struct_version:%d\n", pos, dec->smBufLen, bitstream_buffers[0].struct_version);
+	VDPAU_DBG(5, "InLen:%d smBufLen:%d struct_version:%d", pos, dec->smBufLen, bitstream_buffers[0].struct_version);
 	dec->smBufLen += pos;
 
 //	if ((dec->smBufLen > dec->inbuf_thresh)/* || (dec->codec == HT_VIDEO_VC1)*/) {
@@ -382,7 +385,7 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
 	}
 //	}
 
-    VDPAU_DBG(4, "----------vdp_decoder_render: bufLen:%d\n", dec->smBufLen);
+
     return ret; 
 }
 
@@ -406,7 +409,7 @@ VdpStatus vdp_decoder_query_capabilities(VdpDevice device,
 //	*max_height = 2160;
 	*max_height = RK_WDPAU_HEIGHT_MAX;
 	*max_macroblocks = (*max_width * *max_height) / (16 * 16);
-	VDPAU_DBG(3, "vdp_decoder_query_capabilities:%d", profile);
+	VDPAU_DBG(3, "profile:%d", profile);
 	switch (profile)
 	{
 /*	case VDP_DECODER_PROFILE_MPEG1:

@@ -33,7 +33,7 @@ VdpStatus vdp_bitmap_surface_create(VdpDevice device,
                                     VdpBool frequently_accessed,
                                     VdpBitmapSurface *surface)
 {
-	VDPAU_DBG(1,"vdp_bitmap_surface_create, rgba_format:%d width:%d height:%d", rgba_format, width, height);
+	VDPAU_DBG(1," rgba_format:%d width:%d height:%d", rgba_format, width, height);
 
 	if (!surface)
 		return VDP_STATUS_INVALID_POINTER;
@@ -76,7 +76,7 @@ VdpStatus vdp_bitmap_surface_create(VdpDevice device,
 		return VDP_STATUS_RESOURCES;
 	}
 
-	VDPAU_DBG(2,"vdp_bitmap_surface_create:ok");
+	VDPAU_DBG(2,"ok");
 	return VDP_STATUS_OK;
 }
 
@@ -100,7 +100,7 @@ VdpStatus vdp_bitmap_surface_get_parameters(VdpBitmapSurface surface,
                                             uint32_t *height,
                                             VdpBool *frequently_accessed)
 {
-    VDPAU_DBG(1, "vdp_bitmap_surface_get_parameters\n");
+    VDPAU_DBG(1, "");
 	bitmap_surface_ctx_t *out = handle_get(surface);
 	if (!out)
 		return VDP_STATUS_INVALID_HANDLE;
@@ -156,7 +156,7 @@ VdpStatus vdp_bitmap_surface_query_capabilities(VdpDevice device,
                                                 uint32_t *max_width,
                                                 uint32_t *max_height)
 {
-    VDPAU_DBG(1, "vdp_bitmap_surface_query_capabilities, surface_rgba_format:%d\n",surface_rgba_format);
+    VDPAU_DBG(1, " surface_rgba_format:%d",surface_rgba_format);
 	if (!is_supported || !max_width || !max_height)
 		return VDP_STATUS_INVALID_POINTER;
 

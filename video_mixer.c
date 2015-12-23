@@ -74,7 +74,7 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
     if (!mix)
 	return VDP_STATUS_INVALID_HANDLE;
 
-    VDPAU_DBG(3, "vdp_video_mixer_render\n");
+    VDPAU_DBG(4, "");
 
 
 	if (background_surface != VDP_INVALID_HANDLE)

@@ -71,7 +71,7 @@ int AllocMemPg(queue_target_ctx_t *qt, Bool init)
 	qt->PutFbPtr->Next = FbPtr;
     }
 
-    VDPAU_DBG(2, "AllocMemPg Alloc new buf: %d ",qt->FbAllCnt);
+    VDPAU_DBG(2, "init:%d Alloc new buf: %d %p", init,qt->FbAllCnt, FbPtr);
     return 0;
 
 err2:
@@ -101,7 +101,7 @@ void FreeAllMemPg(queue_target_ctx_t *qt)
     }
 
     qt->PutFbPtr = NULL;
-    VDPAU_DBG(2, "FreeAllMemPg FbAllCnt: %d ", qt->FbAllCnt);
+    VDPAU_DBG(2, "FbAllCnt: %d ", qt->FbAllCnt);
 //    qt->FbAllCnt = 0;
 
     return;
@@ -114,7 +114,7 @@ mem_fb_t *GetMemBlkForPut(queue_target_ctx_t *qt)
 	qt->FbFilledCnt++;
     }
 
-    VDPAU_DBG(3, "GetMemBlkForPut FbFilledCnt: %d  %p",qt->FbFilledCnt, qt->PutFbPtr);
+    VDPAU_DBG(4, "FbFilledCnt: %d  %p",qt->FbFilledCnt, qt->PutFbPtr);
 
     return qt->PutFbPtr;
 }
@@ -128,7 +128,7 @@ OvlMemPgPtr GetMemPgForDisp(queue_target_ctx_t *qt)
 
     qt->WorkFbPtr = qt->DispFbPtr->Next; //TODO check
 
-    VDPAU_DBG(3, "GetMemPgForDisp FbFilledCnt: %d  %p",qt->FbFilledCnt , qt->DispFbPtr);
+    VDPAU_DBG(4, "FbFilledCnt: %d  %p",qt->FbFilledCnt , qt->DispFbPtr);
 
     return qt->DispFbPtr->pMemBuf;
 }
@@ -148,7 +148,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
                                                    VdpPresentationQueueTarget *target)
 {
     int ret;
-	VDPAU_DBG(1, "vdp_presentation_queue_target_create_x11");
+	VDPAU_DBG(1, "");
 	if (!target || !drawable)
 		return VDP_STATUS_INVALID_POINTER;
 
@@ -162,7 +162,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 
 	qt->drawable = drawable;
 	qt->device = dev;
-	VDPAU_DBG(1, "width:%d height:%d", dev->src_width ,dev->src_height);
+
 	ret = Open_RkLayers();
 	if ( ret < 0)
 	{
@@ -213,7 +213,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 	OvlSetColorKey(qt->OSDColorKey);
 //	OvlEnable(qt->VideoLayer, 1);
 
-//	qt->disp_pitch = OvlGetVXresByLay(qt->VideoLayer);
+	qt->DSP_pitch = OvlGetVXresByLay(qt->VideoLayer);
         XGCValues gr_val;
         gr_val.function = GXcopy;
         gr_val.plane_mask = AllPlanes;
@@ -225,7 +225,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 	qt->OSDRendrFlags = 0;
 	qt->OSDShowFlags = 0;
 	dev->queue_target = qt;
-	VDPAU_DBG(2, "vdp_presentation_queue_target_create_x11:ok");
+	VDPAU_DBG(2, "ok");
 	return VDP_STATUS_OK;
 
 out_fb:
@@ -240,7 +240,7 @@ out_layer:
 
 VdpStatus vdp_presentation_queue_target_destroy(VdpPresentationQueueTarget presentation_queue_target)
 {
-	VDPAU_DBG(2, "vdp_presentation_queue_destroy");
+	VDPAU_DBG(2, "");
 	queue_target_ctx_t *qt = handle_get(presentation_queue_target);
 	if (!qt)
 		return VDP_STATUS_INVALID_HANDLE;
@@ -265,7 +265,7 @@ VdpStatus vdp_presentation_queue_create(VdpDevice device,
                                         VdpPresentationQueueTarget presentation_queue_target,
                                         VdpPresentationQueue *presentation_queue)
 {
-	VDPAU_DBG(1, "vdp_presentation_queue_create");
+	VDPAU_DBG(1, "");
 	if (!presentation_queue)
 		return VDP_STATUS_INVALID_POINTER;
 
@@ -290,7 +290,7 @@ VdpStatus vdp_presentation_queue_create(VdpDevice device,
 	q->Drw_w = 0;
 	q->Drw_h = 0;
 
-	VDPAU_DBG(2, "vdp_presentation_queue_create:ok");
+	VDPAU_DBG(2, "ok");
 	return VDP_STATUS_OK;
 }
 
@@ -352,6 +352,14 @@ VdpStatus vdp_presentation_queue_get_time(VdpPresentationQueue presentation_queu
 	return VDP_STATUS_OK;
 }
 
+int SetupOut(queue_target_ctx_t *qt, OvlLayoutFormatType DstFrmt, uint32_t xres, uint32_t yres)
+{
+    int ret = OvlSetupFb(qt->VideoLayer, RK_FORMAT_DEFAULT, DstFrmt, xres, yres);
+    qt->DSP_pitch = OvlGetVXresByLay(qt->VideoLayer) * OvlGetBppByLay(qt->VideoLayer);
+    VDPAU_DBG(3, "Setup Fb, w:%d h:%d dpitch:%d", xres, yres, qt->DSP_pitch);
+    return ret;
+}
+
 VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue,
                                          VdpOutputSurface surface,
                                          uint32_t clip_width,
@@ -364,7 +372,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 
 #ifdef DEBUG
 int dt = (get_time() - q->device->tmr)/1000000;
-    VDPAU_DBG(4, "vdp_presentation_queue_display: time:%d mS\n", dt);
+    VDPAU_DBG(5, "time:%d mS", dt);
 #endif
     output_surface_ctx_t *os = handle_get(surface);
     if (!os)
@@ -378,6 +386,10 @@ int dt = (get_time() - q->device->tmr)/1000000;
 
     if (os->vs)
     {
+//	int Src_w = os->video_src_rect.x1 - os->video_src_rect.x0;
+//	int Src_h = os->video_src_rect.y1 - os->video_src_rect.y0;
+	int Src_w = os->vs->width;
+	int Src_h = os->vs->height;
 
 	if(!q->DispMode){
 
@@ -394,7 +406,7 @@ int dt = (get_time() - q->device->tmr)/1000000;
 		q->DispMode = RK_FORMAT_YCrCb_NV12_SP;
 		break;
 	    }
-	    OvlSetupFb(q->target->VideoLayer, RK_FORMAT_DEFAULT, q->DispMode, 0, 0);
+	    SetupOut(q->target, q->DispMode, Src_w, Src_h);
 	    OvlEnable(q->target->VideoLayer, 1);
 	}
 
@@ -410,20 +422,17 @@ int dt = (get_time() - q->device->tmr)/1000000;
 	Drw_h = os->video_dst_rect.y1 - os->video_dst_rect.y0;
 
 	if(q->Drw_x != x || q->Drw_y != y || q->Drw_w != Drw_w || q->Drw_h != Drw_h){
-	    VDPAU_DBG(2, "changed... x:%d y:%d drw_w:%d drw_h:%d", x, y, Drw_w, Drw_h);
+	    VDPAU_DBG(3, "changed... x:%d y:%d drw_w:%d drw_h:%d", x, y, Drw_w, Drw_h);
 	    WinNeedClr = True;
 	    XClearWindow(q->device->display, q->target->drawable);
 	    
-//	    int Src_w = os->video_src_rect.x1 - os->video_src_rect.x0;
-//	    int Src_h = os->video_src_rect.y1 - os->video_src_rect.y0;
-	    int Src_w = q->device->src_width;
-	    int Src_h = q->device->src_height;
 
 	    if(q->device->osd_enabled){
 		q->target->OSDdst = q->target->OSDmmap + y * q->target->OSD_pitch + x * q->target->OSD_bpp;
 	    }
 
 	    OvlSetupDrw(q->target->VideoLayer, x, y, Drw_w, Drw_h, Src_w, Src_h);
+//
 
 	    q->Drw_x = x;
 	    q->Drw_y = y;
@@ -439,7 +448,7 @@ int dt = (get_time() - q->device->tmr)/1000000;
 	    if(q->target->OSDShowFlags & q->target->OSDRendrFlags){
 //		OvlClrMemPg(q->target->OSDMemPg);
 		WinNeedClr = True;
-		VDPAU_DBG(4, "OSDShowFlags:%X OSDRendrFlags:%X\n", q->target->OSDShowFlags, q->target->OSDRendrFlags);
+		VDPAU_DBG(5, "OSDShowFlags:%X OSDRendrFlags:%X", q->target->OSDShowFlags, q->target->OSDRendrFlags);
 		q->target->OSDRendrFlags = 0;
 	    }else
 		q->target->OSDRendrFlags = ~q->target->OSDShowFlags;
@@ -463,7 +472,7 @@ int dt = (get_time() - q->device->tmr)/1000000;
 #ifdef DEBUG
 uint64_t ltmr = get_time();
 dt = (ltmr - q->device->tmr)/1000000;
-    VDPAU_DBG(4, "---vdp_presentation_queue_display: time:%d mS\n", dt);
+    VDPAU_DBG(5, "--- time:%d mS", dt);
 q->device->tmr = ltmr;
 #endif
 	return VDP_STATUS_OK;
