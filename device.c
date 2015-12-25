@@ -29,7 +29,7 @@
 #include <inc/dwl.h>
 
 #ifdef DEBUG
-int Dbg_Level=3;
+int Dbg_Level=2;
 #endif
 
 VdpStatus vdp_imp_device_create_x11(Display *display,

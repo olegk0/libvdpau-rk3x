@@ -431,7 +431,7 @@ int dt = (get_time() - q->device->tmr)/1000000;
 		q->target->OSDdst = q->target->OSDmmap + y * q->target->OSD_pitch + x * q->target->OSD_bpp;
 	    }
 
-	    OvlSetupDrw(q->target->VideoLayer, x, y, Drw_w, Drw_h, Src_w, Src_h);
+	    OvlSetupDrw(q->target->VideoLayer, x, y, Drw_w, Drw_h);
 //
 
 	    q->Drw_x = x;
