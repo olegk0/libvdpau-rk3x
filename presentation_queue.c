@@ -163,7 +163,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 	qt->drawable = drawable;
 	qt->device = dev;
 
-	ret = Open_RkLayers();
+	ret = Open_RkLayers(False);
 	if ( ret < 0)
 	{
 		VDPAU_ERR("Error Open_RkLayers():%d",ret);

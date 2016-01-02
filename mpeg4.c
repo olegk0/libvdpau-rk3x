@@ -239,7 +239,9 @@ doflush:
 
 //    VDPAU_DBG("MPEG4 stream +++++ decRet:%d  out_left:%d in_len:%d\n", decRet, decOut.dataLeft, decIn.dataLen);
 
-    if (decoder_p->decOut.dataLeft > 0)
+int tms = (get_time() - output->device->tmr)/1000000;
+
+    if (decoder_p->decOut.dataLeft > 0 && tms < 30)
     {
 	decoder_p->decIn.dataLen = decoder_p->decOut.dataLeft;
 	decoder_p->decIn.pStream = decoder_p->decOut.pStrmCurrPos;
