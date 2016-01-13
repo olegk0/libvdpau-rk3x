@@ -216,9 +216,6 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 	dec->dec_width = width;
 	dec->dec_height = height;
 
-//	dev->src_width = width;
-//	dev->src_height = height;
-
 	VdpStatus ret;
 
 	switch (profile)
@@ -264,7 +261,7 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 	if (ret != VDP_STATUS_OK)
 		goto err_data;
 
-	dec->streamMem.size = 4096 * 250; //TODO check 1Mb
+	dec->streamMem.size = DEC_BUF_IN_SIZE;
 	if(DWLMallocLinear(dec->DWLinstance, dec->streamMem.size, &dec->streamMem) != DWL_OK){
 	    VDPAU_ERR("alloc failed");
 	    goto err_decoder;
@@ -286,6 +283,9 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 //	dec->crop_height = height;
 
 	dec->rotation = PP_ROTATION_NONE;
+
+	dec->src_blocks = 0;
+	dec->npp_blocks = 0;
 
 	dec->smBufLen = 0;
 
@@ -372,20 +372,34 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
 		pos += bitstream_buffers[i].bitstream_bytes;
 	}
 
-	VDPAU_DBG(5, "InLen:%d smBufLen:%d struct_version:%d", pos, dec->smBufLen, bitstream_buffers[0].struct_version);
-	dec->smBufLen += pos;
+	if(dec->npp_blocks < 100)
+	    dec->npp_blocks++;
+	i=0;
+	if(dec->src_blocks > 30){//TODO test
+	    if(dec->npp_blocks > dec->src_blocks){
+		i = 1;
+		dec->npp_blocks =0;
+	    }
+	}
 
+	VDPAU_DBG(5, "InLen:%d smBufLen:%d src_blocks:%d  npp_blocks:%d", pos, dec->smBufLen, dec->src_blocks, dec->npp_blocks);
+	dec->smBufLen += pos;
 //	if ((dec->smBufLen > dec->inbuf_thresh)/* || (dec->codec == HT_VIDEO_VC1)*/) {
 	pos = dec->smBufLen;
-	ret = dec->decode(dec, picture_info, &pos, vid);
+
+	ret = dec->decode(dec, picture_info, &pos, vid, i || (dec->smBufLen > (DEC_BUF_IN_SIZE*3)/4));
 	if(pos){
 	    dec->smBufLen -= pos;
-	    if(dec->smBufLen)
+	    if(dec->smBufLen){
 		memmove(dec->streamMem.virtualAddress, (u8 *)(dec->streamMem.virtualAddress) + pos, dec->smBufLen);
-	}
+		if(dec->src_blocks)
+		    dec->src_blocks--;
+	    }
+	    else
+		dec->src_blocks = 0;
+	}else
+	    dec->src_blocks++;
 //	}
-
-
     return ret; 
 }
 

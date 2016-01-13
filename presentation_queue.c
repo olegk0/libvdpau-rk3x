@@ -64,7 +64,7 @@ int AllocMemPg(queue_target_ctx_t *qt, Bool init)
 	qt->DispFbPtr = FbPtr;
 	qt->WorkFbPtr = FbPtr;
 	qt->FbAllCnt = 1;
-	qt->FbFilledCnt = 1;//one always used by display
+	qt->FbFilledCnt = 2;//for display (one render + one prepare)
     }
     else{
         FbPtr->Next = qt->PutFbPtr->Next;
@@ -110,25 +110,30 @@ void FreeAllMemPg(queue_target_ctx_t *qt)
 mem_fb_t *GetMemBlkForPut(queue_target_ctx_t *qt)
 {
     if(qt->FbFilledCnt < qt->FbAllCnt || !AllocPhyMemPg(qt)){
+    if( qt->PutFbPtr->Next !=  qt->DispFbPtr){
 	qt->PutFbPtr = qt->PutFbPtr->Next;
 	qt->FbFilledCnt++;
     }
+    }else{
+	VDPAU_DBG(3, "Drop Pic");
+    }
 
-    VDPAU_DBG(4, "FbFilledCnt: %d  %p",qt->FbFilledCnt, qt->PutFbPtr);
+    VDPAU_DBG(4, "FbFilledCnt: %d  %p 0x%X %p",qt->FbFilledCnt, qt->PutFbPtr, qt->PutFbPtr->PhyAddr, qt->PutFbPtr->pMapMemBuf);
 
     return qt->PutFbPtr;
 }
 
 OvlMemPgPtr GetMemPgForDisp(queue_target_ctx_t *qt)
 {
-    if(qt->FbFilledCnt > 1 && qt->DispFbPtr->Next != qt->PutFbPtr){
+//    if(qt->FbFilledCnt > 2 && qt->DispFbPtr->Next != qt->PutFbPtr->Next){
+    if(qt->FbFilledCnt > 2 && qt->DispFbPtr->Next != qt->PutFbPtr){
 	qt->DispFbPtr = qt->DispFbPtr->Next;
 	qt->FbFilledCnt--;
     }
 
     qt->WorkFbPtr = qt->DispFbPtr->Next; //TODO check
 
-    VDPAU_DBG(4, "FbFilledCnt: %d  %p",qt->FbFilledCnt , qt->DispFbPtr);
+    VDPAU_DBG(4, "FbFilledCnt: %d  %p 0x%X %p",qt->FbFilledCnt , qt->DispFbPtr, qt->DispFbPtr->PhyAddr, qt->DispFbPtr->pMapMemBuf);
 
     return qt->DispFbPtr->pMemBuf;
 }
@@ -163,7 +168,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 	qt->drawable = drawable;
 	qt->device = dev;
 
-	ret = Open_RkLayers(False);
+	ret = Open_RkLayers();
 	if ( ret < 0)
 	{
 		VDPAU_ERR("Error Open_RkLayers():%d",ret);
@@ -381,8 +386,6 @@ int dt = (get_time() - q->device->tmr)/1000000;
 /*    if (earliest_presentation_time != 0)
 	VDPAU_DBG_ONCE("Presentation time not supported");
 */
-//    if(q->target->PicBalance)
-	q->target->PicBalance--;
 
     if (os->vs)
     {
@@ -407,8 +410,11 @@ int dt = (get_time() - q->device->tmr)/1000000;
 		break;
 	    }
 	    SetupOut(q->target, q->DispMode, Src_w, Src_h);
-	    OvlEnable(q->target->VideoLayer, 1);
+	    OvlEnable(q->target->VideoLayer, 1, 0);
 	}
+
+//	OvlWaitSync(q->target->VideoLayer);
+	OvlLayerLinkMemPg( q->target->VideoLayer, GetMemPgForDisp(q->target));
 
 	Window c;
 	int x, y, Drw_w, Drw_h;
@@ -422,17 +428,16 @@ int dt = (get_time() - q->device->tmr)/1000000;
 	Drw_h = os->video_dst_rect.y1 - os->video_dst_rect.y0;
 
 	if(q->Drw_x != x || q->Drw_y != y || q->Drw_w != Drw_w || q->Drw_h != Drw_h){
+
 	    VDPAU_DBG(3, "changed... x:%d y:%d drw_w:%d drw_h:%d", x, y, Drw_w, Drw_h);
 	    WinNeedClr = True;
 	    XClearWindow(q->device->display, q->target->drawable);
-	    
 
 	    if(q->device->osd_enabled){
 		q->target->OSDdst = q->target->OSDmmap + y * q->target->OSD_pitch + x * q->target->OSD_bpp;
 	    }
 
 	    OvlSetupDrw(q->target->VideoLayer, x, y, Drw_w, Drw_h);
-//
 
 	    q->Drw_x = x;
 	    q->Drw_y = y;
@@ -441,8 +446,6 @@ int dt = (get_time() - q->device->tmr)/1000000;
 
 	    q->target->OSDRendrFlags = 0xffffffff;
 	}
-
-	OvlLayerLinkMemPg( q->target->VideoLayer, GetMemPgForDisp(q->target));
 
 	if(q->device->osd_enabled){
 	    if(q->target->OSDShowFlags & q->target->OSDRendrFlags){
@@ -466,9 +469,6 @@ int dt = (get_time() - q->device->tmr)/1000000;
 //		OvlEnable(q->device->VideoLayer, 0);
     }
 
-/*	if (!q->device->osd_enabled)
-		return VDP_STATUS_OK;
-*/
 #ifdef DEBUG
 uint64_t ltmr = get_time();
 dt = (ltmr - q->device->tmr)/1000000;

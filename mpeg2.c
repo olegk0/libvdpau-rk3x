@@ -111,10 +111,8 @@ static void SetFormat(video_surface_ctx_t *output, uint32_t format)
     }
 }
 
-static VdpStatus mpeg2_decode(decoder_ctx_t *decoder,
-                              VdpPictureInfo const *_info,
-                              int *len,
-                              video_surface_ctx_t *output)
+static VdpStatus mpeg2_decode(decoder_ctx_t *decoder, VdpPictureInfo const *_info,
+                              int *len, video_surface_ctx_t *output, Bool pflush)
 {
     VdpPictureInfoMPEG1Or2 const *info = (VdpPictureInfoMPEG1Or2 const *)_info;
     mpeg2_private_t *decoder_p = (mpeg2_private_t *)decoder->private;
@@ -171,25 +169,19 @@ doflush:
 	    decoder_p->mpeg2dec, &decoder_p->decPic, forceflush) == MPEG2DEC_PIC_RDY) {
 
 	    if ((decoder_p->decPic.fieldPicture && !decoder_p->decPic.firstField) || !decoder_p->decPic.fieldPicture) {
-		qt->PicBalance++;
-		VDPAU_DBG(5 ,"decoded picture %d, PicBalance:%d, mpeg2 timestamp:%d-%d:%d:%d",
-			 decoder_p->decPic.picId, qt->PicBalance, decoder_p->decPic.interlaced,
+		VDPAU_DBG(5 ,"decoded picture %d, mpeg2 timestamp:%d-%d:%d:%d",
+			 decoder_p->decPic.picId, decoder_p->decPic.interlaced,
 			 decoder_p->decPic.timeCode.hours, decoder_p->decPic.timeCode.minutes,
 			 decoder_p->decPic.timeCode.seconds);
-		if(qt->PicBalance < (MEMPG_MAX_CNT - 2))
-		{
-		    if(decoder->pp){
-			vdpPPsetOutBuf( GetMemBlkForPut(qt), decoder);
-		    }else{
-			uint32_t length = decoder->dec_width * decoder->dec_height;
-			OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
-			    decoder_p->decPic.pOutputPicture+length,
-			    decoder->dec_width, qt->DSP_pitch,
-			    decoder->dec_width, decoder->dec_height);
-		    }
+
+		if(decoder->pp){
+		    vdpPPsetOutBuf( GetMemBlkForPut(qt), decoder);
 		}else{
-		    qt->PicBalance--;
-		    VDPAU_DBG(3, "Drop pic");
+		    uint32_t length = decoder->dec_width * decoder->dec_height;
+		    OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
+			decoder_p->decPic.pOutputPicture+length,
+			decoder->dec_width, qt->DSP_pitch,
+			decoder->dec_width, decoder->dec_height);
 		}
 	    }
 	}

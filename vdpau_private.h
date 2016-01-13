@@ -28,7 +28,7 @@
 #define DEBUG
 
 #define MAX_HANDLES 64
-#define VBV_SIZE (1 * 1024 * 1024)
+//#define VBV_SIZE (1 * 1024 * 1024)
 
 #include <stdlib.h>
 #include <vdpau/vdpau.h>
@@ -42,6 +42,7 @@
 #define RK_WDPAU_WIDTH_MAX 1920
 #define RK_WDPAU_HEIGHT_MAX 1080
 #define MEMPG_DEF_SIZE RK_WDPAU_WIDTH_MAX*RK_WDPAU_HEIGHT_MAX*4
+#define DEC_BUF_IN_SIZE 4096 * 500 //TODO tune 2mb
 
 #ifdef DEBUG
 extern int Dbg_Level;
@@ -101,7 +102,6 @@ typedef struct queue_target_ctx
 	uint32_t MemPgSize;
 	uint32_t OSDShowFlags;
 	uint32_t OSDRendrFlags;
-	int PicBalance;
 } queue_target_ctx_t;
 
 typedef struct video_surface_ctx_struct
@@ -122,7 +122,7 @@ typedef struct decoder_ctx_struct
 	uint32_t dec_width;
 	uint32_t dec_height;
 	device_ctx_t *device;
-	VdpStatus (*decode)(struct decoder_ctx_struct *decoder, VdpPictureInfo const *info, int *len, video_surface_ctx_t *output);
+	VdpStatus (*decode)(struct decoder_ctx_struct *decoder, VdpPictureInfo const *info, int *len, video_surface_ctx_t *output, Bool pflush);
 	void *private;
 	void (*private_free)(struct decoder_ctx_struct *decoder);
 	DWLLinearMem_t streamMem;
@@ -136,6 +136,8 @@ typedef struct decoder_ctx_struct
 //	uint32_t crop_x;
 //	uint32_t crop_y;
 	uint32_t rotation;
+	uint32_t src_blocks;
+	uint32_t npp_blocks;
 } decoder_ctx_t;
 
 typedef struct

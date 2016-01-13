@@ -214,10 +214,8 @@ static void h264_error(int err)
     VDPAU_ERR("decode error (%d) %s", err, err_name);
 }
 
-static VdpStatus h264_decode(decoder_ctx_t *decoder,
-                              VdpPictureInfo const *_info,
-                              int *len,
-                              video_surface_ctx_t *output)
+static VdpStatus h264_decode(decoder_ctx_t *decoder, VdpPictureInfo const *_info,
+                              int *len, video_surface_ctx_t *output, Bool pflush)
 {
     VdpPictureInfoH264 const *info = (VdpPictureInfoH264 const *)_info;
     h264_private_t *decoder_p = (h264_private_t *)decoder->private;
@@ -241,6 +239,8 @@ static VdpStatus h264_decode(decoder_ctx_t *decoder,
     int dt = (ltmr - output->device->tmr)/1000000;
     VDPAU_DBG(5, " *******  time:%d", dt);
 #endif
+
+    VDPAU_DBG(5, "stream len ******* %d ********", *len);
 
     if(decoder_p->ThereArePic){
 	VDPAU_DBG(5, "**ThereArePic detected");
@@ -276,36 +276,23 @@ donext:
 doflush:
 	while (H264DecNextPicture(decoder_p->h264dec, &decoder_p->decPic, forceflush) == H264DEC_PIC_RDY)
 	{
-	    qt->PicBalance++;
-#ifdef DEBUG
-	    ltmr = get_time();
-	    dt = (ltmr - output->device->tmr)/1000000;
-	    VDPAU_DBG(5, "decoded picture %d PicBalance:%d time:%d mS", decoder_p->picNumber, qt->PicBalance, dt);
-#endif
-	    if(qt->PicBalance < (MEMPG_MAX_CNT -2)){
-		if(decoder->pp){
-		    vdpPPsetOutBuf( GetMemBlkForPut(qt), decoder);
-		}else{
-		    uint32_t length = decoder->dec_width * decoder->dec_height;
-		    OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,
-			(uint8_t *)decoder_p->decPic.pOutputPicture+length,
-			decoder->dec_width, qt->DSP_pitch,
-			decoder->dec_width, decoder->dec_height);
-		}
-#ifdef DEBUG
-	    int tms = (get_time() - output->device->tmr)/1000000;
-	    VDPAU_DBG(5, "---time:%d mS", tms);
-#endif
-
+	    if(decoder->pp){
+		vdpPPsetOutBuf( GetMemBlkForPut(qt), decoder);
 	    }else{
-		qt->PicBalance--;
-		VDPAU_DBG(3, "Drop pic");
+		uint32_t length = decoder->dec_width * decoder->dec_height;
+		OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,
+		    (uint8_t *)decoder_p->decPic.pOutputPicture+length,
+		    decoder->dec_width, qt->DSP_pitch,
+		    decoder->dec_width, decoder->dec_height);
 	    }
 
-	    if(qt->FbFilledCnt >= MEMPG_MAX_CNT/* || tms > 30*/){
-		VDPAU_DBG(5, "Buff full+++++++");
-		*len = 0;
-		return VDP_STATUS_OK;
+	    if(qt->FbFilledCnt >= MEMPG_MAX_CNT){
+		if(!pflush){
+		    VDPAU_DBG(5, "Buff full+++++++");
+		    *len = 0;
+		    return VDP_STATUS_OK;
+		}else
+		    pflush = 0;
 	    }
 
 	}

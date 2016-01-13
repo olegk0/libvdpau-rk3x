@@ -45,6 +45,7 @@ typedef struct
     MP4DecInfo decInfo;
     MP4DecPicture decPic;
     Bool ThereArePic;
+    int LasttimeIncr;
 } mpeg4_private_t;
 
 static void mpeg4_private_free(decoder_ctx_t *decoder)
@@ -112,10 +113,8 @@ static void SetFormat(video_surface_ctx_t *output, uint32_t format)
     }
 }
 
-static VdpStatus mpeg4_decode(decoder_ctx_t *decoder,
-                              VdpPictureInfo const *_info,
-                              int *len,
-                              video_surface_ctx_t *output)
+static VdpStatus mpeg4_decode(decoder_ctx_t *decoder, VdpPictureInfo const *_info,
+                              int *len, video_surface_ctx_t *output, Bool pflush)
 {
     VdpPictureInfoMPEG4Part2 const *info = (VdpPictureInfoMPEG4Part2 const *)_info;
     mpeg4_private_t *decoder_p = (mpeg4_private_t *)decoder->private;
@@ -174,45 +173,42 @@ donext:
 	decoder_p->picNumber++;
 	decoder_p->ThereArePic = True;
 doflush:
-	while (MP4DecNextPicture(
-	    decoder_p->mpeg4dec, &decoder_p->decPic, forceflush) == MP4DEC_PIC_RDY) {
-
+	while (MP4DecNextPicture(decoder_p->mpeg4dec, &decoder_p->decPic, forceflush) == MP4DEC_PIC_RDY) {
+	    if(decoder_p->decPic.timeCode.timeIncr == decoder_p->LasttimeIncr)
+		continue;
+	    decoder_p->LasttimeIncr = decoder_p->decPic.timeCode.timeIncr;
 	    if ((decoder_p->decPic.fieldPicture && secondField) || !decoder_p->decPic.fieldPicture) {
-		qt->PicBalance++;
-		VDPAU_DBG(5 ,"play_mpeg4: decoded picture %d, PicBalance:%d mpeg4 timestamp: %d:%d:%d:%d (%d)",
-			 decoder_p->picNumber, qt->PicBalance,
+		VDPAU_DBG(5 ,"play_mpeg4: decoded picture %d,fieldPicture %d, secondField %d,  mpeg4 timestamp: %d:%d:%d:%d (%d)",
+			 decoder_p->picNumber, decoder_p->decPic.fieldPicture, secondField,
 			 decoder_p->decPic.timeCode.hours, decoder_p->decPic.timeCode.minutes,
 			 decoder_p->decPic.timeCode.seconds, decoder_p->decPic.timeCode.timeIncr,
 			 decoder_p->decPic.timeCode.timeRes);
 		if (decoder_p->decPic.fieldPicture)
 		    secondField = 0;
 
-		if(qt->PicBalance < (MEMPG_MAX_CNT - 2))
-		{
-
-		    if(decoder->pp){
-			vdpPPsetOutBuf( GetMemBlkForPut(qt), decoder);
-		    }else{
-			uint32_t length = decoder->dec_width * decoder->dec_height;
-			OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
-			    decoder_p->decPic.pOutputPicture+length,
-			    decoder->dec_width, qt->DSP_pitch,
-			    decoder->dec_width, decoder->dec_height);
-		    }
+		if(decoder->pp){
+		    vdpPPsetOutBuf( GetMemBlkForPut(qt), decoder);
 		}else{
-		    qt->PicBalance--;
-		    VDPAU_DBG(3, "Drop pic");
+		    uint32_t length = decoder->dec_width * decoder->dec_height;
+		    OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
+			decoder_p->decPic.pOutputPicture+length,
+			decoder->dec_width, qt->DSP_pitch,
+			decoder->dec_width, decoder->dec_height);
 		}
 
 	    }
 	    else if (decoder_p->decPic.fieldPicture)
 		secondField = 1;
 
-        if(qt->FbFilledCnt >= (MEMPG_MAX_CNT)){
-	    VDPAU_DBG(5, "Buff full+++++++");
-	    *len = 0;
-	    return VDP_STATUS_OK;
-        }
+	    if(qt->FbFilledCnt >= MEMPG_MAX_CNT){
+		if(!pflush){
+		    VDPAU_DBG(5, "Buff full+++++++");
+		    *len = 0;
+		    return VDP_STATUS_OK;
+		}else
+		    pflush = 0;
+	    }
+
 	}
 
 	decoder_p->ThereArePic = False;

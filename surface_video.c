@@ -175,7 +175,12 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 	vs->source_format = source_ycbcr_format;
 
 	mem_fb_t *CurMemBuf =  GetMemBlkForPut(qt);
-
+/*
+#ifdef DEBUG
+	    int tms = (get_time() - dev->tmr)/1000000;
+	    VDPAU_DBG(5, "time:%d mS", tms);
+#endif
+*/
 	VDPAU_DBG(5, "spitch:%d dpitch:%d", source_pitches[0], qt->DSP_pitch);
 	switch (source_ycbcr_format)
 	{
@@ -196,7 +201,12 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 	default:
 	    return VDP_STATUS_ERROR;
 	}
-
+/*
+#ifdef DEBUG
+	    tms = (get_time() - dev->tmr)/1000000;
+	    VDPAU_DBG(5, "time:%d mS", tms);
+#endif
+*/
 	return VDP_STATUS_OK;
 }
 
