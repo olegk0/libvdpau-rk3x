@@ -228,7 +228,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(VdpOutputSurface destination_
                                                    VdpOutputSurfaceRenderBlendState const *blend_state,
                                                    uint32_t flags)
 {
-    VDPAU_DBG(5, "");
+//    VDPAU_DBG(5, "");
     output_surface_ctx_t *out = handle_get(destination_surface);
     if (!out)
 	return VDP_STATUS_INVALID_HANDLE;

@@ -29,6 +29,37 @@
 
 #include <string.h>
 #include "vdpau_private.h"
+#include <semaphore.h>
+
+static pthread_mutex_t in_buf_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t in_buf_cv = PTHREAD_COND_INITIALIZER;
+static pthread_t dec_thread;
+static sem_t in_buf_sem;
+
+#define IN_FBBUF_CNT_SEM IN_FBBUF_CNT-2
+
+in_mem_fb_t *PopInBuf(decoder_ctx_t *dec)
+{
+	pthread_mutex_lock(&in_buf_mutex);
+
+	int free_blocks;
+	sem_getvalue(&in_buf_sem, &free_blocks);
+	VDPAU_DBG(5, "free_blocks:%d",free_blocks);
+	while(free_blocks >= IN_FBBUF_CNT_SEM){
+		pthread_cond_wait(&in_buf_cv, &in_buf_mutex);
+		sem_getvalue(&in_buf_sem, &free_blocks);
+	}
+
+	dec->cur_in_fbmem++;
+	if(dec->cur_in_fbmem >= IN_FBBUF_CNT)
+		dec->cur_in_fbmem = 0;
+	sem_post(&in_buf_sem);
+
+	VDPAU_DBG(5, "continue, free_blocks:%d, cur_in_fbmem:%d",free_blocks, dec->cur_in_fbmem);
+	pthread_mutex_unlock(&in_buf_mutex);
+
+	return &dec->in_fbmem[dec->cur_in_fbmem];
+}
 
 VdpStatus vdpPPsetOutBuf(mem_fb_t *mempg, decoder_ctx_t *dec)
 {
@@ -207,6 +238,10 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 	if (!dec)
 		goto err_ctx;
 
+	dec->in_fbmem = calloc(IN_FBBUF_CNT, sizeof(in_mem_fb_t));
+	if(!dec->in_fbmem)
+		goto err_data;
+
 	dec->streamMem.virtualAddress = NULL;
 	dec->streamMem.busAddress = 0;
 	dec->streamMem.size = 0;
@@ -284,18 +319,28 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 
 	dec->rotation = PP_ROTATION_NONE;
 
-	dec->src_blocks = 0;
-	dec->npp_blocks = 0;
-
-	dec->smBufLen = 0;
+	dec->last_in_fbmem = 1;
+	dec->cur_in_fbmem = 0;
+	dec->in_fbmem[dec->last_in_fbmem].offset = 0;
+	dec->in_fbmem[dec->last_in_fbmem].data_size = 0;
+	sem_init(&in_buf_sem, 0, IN_FBBUF_CNT_SEM);
 
 	DWLSetHWFreq(dec_freq);
+
+// start decoder thread
+
+	dec->drop_cnt = 0;
+	dec->th_stat = 0;
+	pthread_create(&dec_thread, NULL, dec->decode, dec);
+
 	VDPAU_DBG(2, "ok");
 	return VDP_STATUS_OK;
 
 err_decoder:
 	dec->private_free(dec);
 err_data:
+	if(dec->in_fbmem)
+		free(dec->in_fbmem);
 	handle_destroy(*decoder);
 err_ctx:
 	return VDP_STATUS_RESOURCES;
@@ -308,6 +353,25 @@ VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
 	if (!dec)
 		return VDP_STATUS_INVALID_HANDLE;
 
+	pthread_mutex_lock(&in_buf_mutex);
+	dec->th_stat = -1;
+//	dec->in_blocks++;
+	int sts;
+	sem_getvalue(&in_buf_sem, &sts);
+	while(sts  >= IN_FBBUF_CNT_SEM){
+		sem_trywait(&in_buf_sem);
+		sem_getvalue(&in_buf_sem, &sts);
+	}
+
+	pthread_cond_signal(&in_buf_cv);
+	pthread_mutex_unlock(&in_buf_mutex);
+
+	GetMemPgFake(dec->device->queue_target, 10);
+
+	VDPAU_DBG(3, "Wait for dec thread ended");
+	pthread_join(dec_thread, (void**)&sts);
+	VDPAU_DBG(3, "thread ended");
+
 	if(dec->DWLinstance && dec->streamMem.virtualAddress)
 	    DWLFreeLinear(dec->DWLinstance, &dec->streamMem);
 
@@ -319,6 +383,10 @@ VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
 	if (dec->private_free)
 		dec->private_free(dec);
 
+	sem_destroy(&in_buf_sem);
+
+	if(dec->in_fbmem)
+		free(dec->in_fbmem);
 	handle_destroy(decoder);
 
 	return VDP_STATUS_OK;
@@ -359,47 +427,88 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
 	if (!vid)
 		return VDP_STATUS_INVALID_HANDLE;
 
-	int i, pos = 0, ret=VDP_STATUS_OK;
+	int i, n, pos = 0, ret=VDP_STATUS_OK;
 
+	dec->pic_info = picture_info;
+	dec->vs = vid;
+
+	for (i = 0; i < bitstream_buffer_count; i++)//calc size
+		pos += bitstream_buffers[i].bitstream_bytes;
+
+	if(dec->device->queue_target->flush_fl)
+		GetMemPgFake(dec->device->queue_target, 10);
+
+	pthread_mutex_lock(&in_buf_mutex);
+
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	ts.tv_nsec += 5000;
+	VDPAU_DBG(4, "sem_timedwait");
+	if(sem_timedwait(&in_buf_sem, &ts))
+		return VDP_STATUS_RESOURCES;
+
+/*	while(sem_timedwait(&in_buf_sem, &ts) == ETIMEDOUT){
+		GetMemPgFake(dec->device->queue_target);
+		clock_gettime(CLOCK_REALTIME, &ts);
+		ts.tv_nsec += 1000;
+		VDPAU_DBG(4, "sem_timedwait:Timeout");
+	}
+	*/
+//
+//	sem_wait(&in_buf_sem);
+
+	if(dec->in_fbmem[dec->last_in_fbmem].offset + pos > (DEC_BUF_IN_SIZE-(DEC_BUF_IN_SIZE/20))){//5% safe
+		dec->in_fbmem[dec->last_in_fbmem].offset = 0;
+	}
+
+	dec->in_fbmem[dec->last_in_fbmem].data_size = pos;
+
+	uint32_t offset = dec->in_fbmem[dec->last_in_fbmem].offset;
+	pos = 0;
 	for (i = 0; i < bitstream_buffer_count; i++)
 	{
-		if((pos + dec->smBufLen + bitstream_buffers[i].bitstream_bytes) > dec->streamMem.size){
-		    VDPAU_DBG(3, "input buffer overflow");
-		    break;
-		}
-//		    return VDP_STATUS_RESOURCES;
-		memcpy((u8 *)(dec->streamMem.virtualAddress) + pos + dec->smBufLen, bitstream_buffers[i].bitstream, bitstream_buffers[i].bitstream_bytes);
+		memcpy((u8 *)(dec->streamMem.virtualAddress) + offset + pos, bitstream_buffers[i].bitstream, bitstream_buffers[i].bitstream_bytes);
 		pos += bitstream_buffers[i].bitstream_bytes;
 	}
 
-	if(dec->npp_blocks < 100)
-	    dec->npp_blocks++;
-	i=0;
-	if(dec->src_blocks > 30){//TODO test
-	    if(dec->npp_blocks > dec->src_blocks){
-		i = 1;
-		dec->npp_blocks =0;
-	    }
+	dec->last_in_fbmem++;
+	if(dec->last_in_fbmem >= IN_FBBUF_CNT){
+		dec->last_in_fbmem = 0;
 	}
 
-	VDPAU_DBG(5, "InLen:%d smBufLen:%d src_blocks:%d  npp_blocks:%d", pos, dec->smBufLen, dec->src_blocks, dec->npp_blocks);
-	dec->smBufLen += pos;
-//	if ((dec->smBufLen > dec->inbuf_thresh)/* || (dec->codec == HT_VIDEO_VC1)*/) {
-	pos = dec->smBufLen;
+	dec->in_fbmem[dec->last_in_fbmem].offset = offset + pos;
 
-	ret = dec->decode(dec, picture_info, &pos, vid, i || (dec->smBufLen > (DEC_BUF_IN_SIZE*3)/4));
-	if(pos){
-	    dec->smBufLen -= pos;
-	    if(dec->smBufLen){
-		memmove(dec->streamMem.virtualAddress, (u8 *)(dec->streamMem.virtualAddress) + pos, dec->smBufLen);
-		if(dec->src_blocks)
-		    dec->src_blocks--;
-	    }
-	    else
-		dec->src_blocks = 0;
+	int free_blocks;
+	sem_getvalue(&in_buf_sem, &free_blocks);
+
+	if(free_blocks < IN_FBBUF_CNT_SEM - 1){
+		if(dec->drop_cnt < 2){
+			if(dec->drop_cnt == 1){
+				GetMemPgFake(dec->device->queue_target, 1);
+			}
+			else{
+//				dec->drop_cnt = (free_blocks*4/3 ) - 26;
+				dec->drop_cnt = free_blocks - 20;
+				if(dec->drop_cnt < 0)
+					dec->drop_cnt = 0;
+				dec->drop_cnt += 2;
+			}
+		}
+		dec->drop_cnt--;
 	}else
-	    dec->src_blocks++;
-//	}
+		dec->drop_cnt = 0;
+
+	if(free_blocks == IN_FBBUF_CNT_SEM - 1) //was 0
+		pthread_cond_signal(&in_buf_cv);
+
+	VDPAU_DBG(5, "InLen:%d free_blocks:%d, drop_cnt:%d  ", pos, free_blocks, dec->drop_cnt);
+	pthread_mutex_unlock(&in_buf_mutex);
+
+	ret = dec->th_stat;
+	dec->th_stat = VDP_STATUS_OK;
+
+//	usleep(5000);
+	dec->device->queue_target->flush_fl = 1;
     return ret; 
 }
 

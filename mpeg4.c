@@ -37,15 +37,7 @@
 typedef struct
 {
     MP4DecInst mpeg4dec;
-    u32 picNumber;
-//    int width;
-//    int height;
-    MP4DecInput decIn;
-    MP4DecOutput decOut;
-    MP4DecInfo decInfo;
-    MP4DecPicture decPic;
-    Bool ThereArePic;
-    int LasttimeIncr;
+
 } mpeg4_private_t;
 
 static void mpeg4_private_free(decoder_ctx_t *decoder)
@@ -113,24 +105,26 @@ static void SetFormat(video_surface_ctx_t *output, uint32_t format)
     }
 }
 
-static VdpStatus mpeg4_decode(decoder_ctx_t *decoder, VdpPictureInfo const *_info,
-                              int *len, video_surface_ctx_t *output, Bool pflush)
+void *mpeg4_decode(void *args)
 {
-    VdpPictureInfoMPEG4Part2 const *info = (VdpPictureInfoMPEG4Part2 const *)_info;
+	decoder_ctx_t *decoder = (decoder_ctx_t *)args;
+    VdpPictureInfoMPEG4Part2 const *info;
     mpeg4_private_t *decoder_p = (mpeg4_private_t *)decoder->private;
-    queue_target_ctx_t *qt = decoder->device->queue_target;
+    queue_target_ctx_t *qt;
 
-/*    MP4DecInput decIn;
+    u32 picNumber = 0;
+    MP4DecInput decIn;
     MP4DecOutput decOut;
     MP4DecInfo decInfo;
     MP4DecPicture decPic;
-*/
+    int LasttimeIncr = 0;
+
     MP4DecRet decRet;
     MP4DecRet infoRet;
 
     int secondField = 1;
 //    GstBuffer *image;
-    int forceflush = 0, flush =0;
+    int forceflush = 0;
 
 /*
 	if (!info->resync_marker_disable)
@@ -139,122 +133,124 @@ static VdpStatus mpeg4_decode(decoder_ctx_t *decoder, VdpPictureInfo const *_inf
 		return VDP_STATUS_ERROR;
 	}
 */
-    VDPAU_DBG(5, "stream len ******* %d ********", *len);
+    VDPAU_DBG(3, "thread run");
+    do{
 
-    if(decoder_p->ThereArePic){
-	VDPAU_DBG(4, "**ThereArePic detected");
-	goto doflush;
-    }
+    	in_mem_fb_t *in_buf = PopInBuf(decoder);
+    	if(decoder->th_stat < 0 ){
+    		return VDP_STATUS_OK;
+    	}
 
-    decoder_p->decIn.pStream = (u8 *) decoder->streamMem.virtualAddress;
-    decoder_p->decIn.streamBusAddress = decoder->streamMem.busAddress;
-    decoder_p->decIn.dataLen = *len;
+    	if(!picNumber){
+    		info = (VdpPictureInfoMPEG4Part2 const *)decoder->pic_info;
+    		qt = decoder->device->queue_target;
+    		decIn.skipNonReference = PROP_DEFAULT_SKIP_NON_REFERENCE;
+    	}
+
+    	VDPAU_DBG(5, "stream InLen ******* %d ********", in_buf->data_size);
+
+    	decIn.pStream = (u8 *)decoder->streamMem.virtualAddress + in_buf->offset;
+    	decIn.streamBusAddress = decoder->streamMem.busAddress + in_buf->offset;
+    	decIn.dataLen = in_buf->data_size;
+
+    	VDPAU_DBG(5, "virtualAddress:%p, offset:%d, busAddress:%X, decIn.streamBusAddress:%X",
+    			decoder->streamMem.virtualAddress, in_buf->offset, decoder->streamMem.busAddress, decIn.streamBusAddress);
 
 donext:
-    decoder_p->decIn.picId = decoder_p->picNumber;
-    decRet = MP4DecDecode(decoder_p->mpeg4dec, &decoder_p->decIn, &decoder_p->decOut);
+    	decIn.picId = picNumber;
+    	decRet = MP4DecDecode(decoder_p->mpeg4dec, &decIn, &decOut);
 
-    switch (decRet) {
-    case MP4DEC_HDRS_RDY:
+    	switch (decRet) {
+    	case MP4DEC_HDRS_RDY:
 	// read stream info 
-	infoRet = MP4DecGetInfo(decoder_p->mpeg4dec, &decoder_p->decInfo);
-	SetFormat( output, decoder_p->decInfo.outputFormat);
-	VDPAU_DBG(1, "MPEG4 stream, %dx%d, interlaced %d, format %x",
-	    decoder_p->decInfo.frameWidth, decoder_p->decInfo.frameHeight,
-	    decoder_p->decInfo.interlacedSequence, decoder_p->decInfo.outputFormat);
-	decoder->dec_width = decoder_p->decInfo.frameWidth;
-	decoder->dec_height = decoder_p->decInfo.frameHeight;
-	if (decoder->pp)
-	    vdpPPsetConfig(decoder, output, decoder_p->decInfo.outputFormat, decoder_p->decInfo.interlacedSequence);
+    		infoRet = MP4DecGetInfo(decoder_p->mpeg4dec, &decInfo);
+    		SetFormat( decoder->vs, decInfo.outputFormat);
+    		VDPAU_DBG(1, "MPEG4 stream, %dx%d, interlaced %d, format %x",
+    				decInfo.frameWidth, decInfo.frameHeight,
+					decInfo.interlacedSequence, decInfo.outputFormat);
+    		decoder->dec_width = decInfo.frameWidth;
+    		decoder->dec_height = decInfo.frameHeight;
+    		if (decoder->pp)
+    			vdpPPsetConfig(decoder, decoder->vs, decInfo.outputFormat, decInfo.interlacedSequence);
 
-	break;
-    case MP4DEC_PIC_DECODED:
+    		break;
+    	case MP4DEC_PIC_DECODED:
 	// a picture was decoded 
-	decoder_p->picNumber++;
-	decoder_p->ThereArePic = True;
+    		picNumber++;
+
 doflush:
-	while (MP4DecNextPicture(decoder_p->mpeg4dec, &decoder_p->decPic, forceflush) == MP4DEC_PIC_RDY) {
-	    if(decoder_p->decPic.timeCode.timeIncr == decoder_p->LasttimeIncr)
-		continue;
-	    decoder_p->LasttimeIncr = decoder_p->decPic.timeCode.timeIncr;
-	    if ((decoder_p->decPic.fieldPicture && secondField) || !decoder_p->decPic.fieldPicture) {
-		VDPAU_DBG(5 ,"play_mpeg4: decoded picture %d,fieldPicture %d, secondField %d,  mpeg4 timestamp: %d:%d:%d:%d (%d)",
-			 decoder_p->picNumber, decoder_p->decPic.fieldPicture, secondField,
-			 decoder_p->decPic.timeCode.hours, decoder_p->decPic.timeCode.minutes,
-			 decoder_p->decPic.timeCode.seconds, decoder_p->decPic.timeCode.timeIncr,
-			 decoder_p->decPic.timeCode.timeRes);
-		if (decoder_p->decPic.fieldPicture)
-		    secondField = 0;
+			while(MP4DecNextPicture(decoder_p->mpeg4dec, &decPic, forceflush) == MP4DEC_PIC_RDY  && decoder->th_stat >= 0) {
 
-		if(decoder->pp){
-		    vdpPPsetOutBuf( GetMemBlkForPut(qt), decoder);
-		}else{
-		    uint32_t length = decoder->dec_width * decoder->dec_height;
-		    OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decoder_p->decPic.pOutputPicture,\
-			decoder_p->decPic.pOutputPicture+length,
-			decoder->dec_width, qt->DSP_pitch,
-			decoder->dec_width, decoder->dec_height);
-		}
+				if(decPic.timeCode.timeIncr == LasttimeIncr)
+					qt->drop_fl = 1;
+//					continue;
+				LasttimeIncr = decPic.timeCode.timeIncr;
 
-	    }
-	    else if (decoder_p->decPic.fieldPicture)
-		secondField = 1;
+				if ((decPic.fieldPicture && secondField) || !decPic.fieldPicture)
+				{
+					VDPAU_DBG(5 ,"play_mpeg4: decoded picture %d,fieldPicture %d, secondField %d,  mpeg4 timestamp: %d:%d:%d:%d (%d)",
+							picNumber, decPic.fieldPicture, secondField,
+							decPic.timeCode.hours, decPic.timeCode.minutes,
+							decPic.timeCode.seconds, decPic.timeCode.timeIncr,
+							decPic.timeCode.timeRes);
+					if (decPic.fieldPicture)
+						secondField = 0;
 
-	    if(qt->FbFilledCnt >= MEMPG_MAX_CNT){
-		if(!pflush){
-		    VDPAU_DBG(5, "Buff full+++++++");
-		    *len = 0;
-		    return VDP_STATUS_OK;
-		}else
-		    pflush = 0;
-	    }
+					if(decoder->pp){
+						vdpPPsetOutBuf( GetMemBlkForPut(qt), decoder);
+					}else{
+						uint32_t length = decoder->dec_width * decoder->dec_height;
+						OvlCopyNV12SemiPlanarToFb(GetMemPgForPut(qt), decPic.pOutputPicture,
+								decPic.pOutputPicture+length,
+								qt->DSP_pitch, decoder->dec_width,
+								decoder->dec_width, decoder->dec_height);
+					}
 
-	}
+				}
+				else
+					if (decPic.fieldPicture)
+						secondField = 1;
 
-	decoder_p->ThereArePic = False;
-	break;
-    case MP4DEC_NONREF_PIC_SKIPPED:
+			}
+
+			break;
+    	case MP4DEC_NONREF_PIC_SKIPPED:
 	// Skipped non-reference picture
-	break;
-    case MP4DEC_STRM_PROCESSED:
-	// input stream processed but no picture ready 
-	break;
-    case MP4DEC_STRM_ERROR:
-	// input stream processed but no picture ready 
-	break;
-    case MP4DEC_VOS_END:
+//    		VDPAU_DBG(5 ,"MP4DEC_NONREF_PIC_SKIPPED");
+    		break;
+    	case MP4DEC_STRM_PROCESSED:
+	// input stream processed but no picture ready
+//    		VDPAU_DBG(5 ,"MP4DEC_STRM_PROCESSED");
+    		break;
+    	case MP4DEC_STRM_ERROR:
+	// input stream processed but no picture ready
+//    		VDPAU_DBG(5 ,"MP4DEC_STRM_ERROR");
+    		break;
+    	case MP4DEC_VOS_END:
 	// end of stream 
-	decoder_p->decOut.dataLeft = 0;
-	break;
-    default:
+    		decOut.dataLeft = 0;
+    		break;
+    	default:
 	// some kind of error, decoding cannot continue 
-	mpeg4_error(decRet);
-	VDPAU_DBG(5, "stream ERR ------ decRet:%d  out_left:%d in_len:%d", decRet, decoder_p->decOut.dataLeft, decoder_p->decIn.dataLen);
-	return VDP_STATUS_ERROR;
-    }
+    		mpeg4_error(decRet);
+    		if(decoder->th_stat < 0 )
+    			return VDP_STATUS_OK;
+    		decoder->th_stat = VDP_STATUS_ERROR;
+    	}
 
-//    VDPAU_DBG("MPEG4 stream +++++ decRet:%d  out_left:%d in_len:%d\n", decRet, decOut.dataLeft, decIn.dataLen);
 
-int tms = (get_time() - output->device->tmr)/1000000;
+    	if (decOut.dataLeft > 0 && decoder->th_stat >= 0)
+        {
+            decIn.dataLen = decOut.dataLeft;
+            decIn.pStream = decOut.pStrmCurrPos;
+            decIn.streamBusAddress = decOut.strmCurrBusAddress;
+            goto donext;
+        }
 
-    if (decoder_p->decOut.dataLeft > 0 && tms < 30)
-    {
-	decoder_p->decIn.dataLen = decoder_p->decOut.dataLeft;
-	decoder_p->decIn.pStream = decoder_p->decOut.pStrmCurrPos;
-	decoder_p->decIn.streamBusAddress = decoder_p->decOut.strmCurrBusAddress;
-	goto donext;
-    }
 
-    if (flush && !forceflush) {
-	forceflush = 1;
-	goto doflush;
-    }
+    }while(decoder->th_stat >= 0 );
 
-    *len = (u8 *)decoder_p->decOut.pStrmCurrPos - (u8 *)decoder->streamMem.virtualAddress;
-
-//    VDPAU_DBG("MPEG4 stream *+*+*+*+ decRet:%d  out_left:%d in_len:%d len:%d\n", decRet, decOut.dataLeft, decIn.dataLen, *len);
-
-    return VDP_STATUS_OK;
+	return VDP_STATUS_OK;
 }
 
 VdpStatus new_decoder_mpeg4(decoder_ctx_t *decoder)
@@ -290,9 +286,6 @@ VdpStatus new_decoder_mpeg4(decoder_ctx_t *decoder)
 	VDPAU_ERR("Init error:%d",ret);
 	goto err_free;
     }
-
-    decoder_p->picNumber = 0;
-    decoder_p->ThereArePic = False;
 
     decoder->decode = mpeg4_decode;
     decoder->private = decoder_p;

@@ -4,7 +4,8 @@ SRC = device.c presentation_queue.c  surface_video.c \
 	surface_bitmap.c surface_output.c video_mixer.c  handles.c \
 	 tiled_yuv.S rgb_asm.S
 
-CFLAGS ?= -Wall -Werror=implicit-function-declaration -O3 -I./include
+#CFLAGS ?= -Wall -Werror=implicit-function-declaration -O3 -I./include
+CFLAGS ?= -Wall -Werror=implicit-function-declaration -g -O0 -I./include
 LDFLAGS ?=
 LIBS = -lrt -lm -lX11 -lpthread -ldecx170h -ldecx170m2 -ldecx170m -ldecx170p -ldecx170v -ldwlx170 -lx170j -lrklayers
 CC ?= gcc

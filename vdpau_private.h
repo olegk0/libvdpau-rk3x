@@ -37,12 +37,16 @@
 #include <rk_layers.h>
 #include <inc/dwl.h>
 #include <inc/ppapi.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <errno.h>
 
 #define MEMPG_MAX_CNT 8
 #define RK_WDPAU_WIDTH_MAX 1920
 #define RK_WDPAU_HEIGHT_MAX 1080
 #define MEMPG_DEF_SIZE RK_WDPAU_WIDTH_MAX*RK_WDPAU_HEIGHT_MAX*4
 #define DEC_BUF_IN_SIZE 4096 * 500 //TODO tune 2mb
+#define IN_FBBUF_CNT 50
 
 #ifdef DEBUG
 extern int Dbg_Level;
@@ -97,11 +101,13 @@ typedef struct queue_target_ctx
 	int FbFilledCnt;
 	uint32_t DSP_pitch;
 	mem_fb_t *DispFbPtr;
-	mem_fb_t *WorkFbPtr;
+//	mem_fb_t *WorkFbPtr;
 	mem_fb_t *PutFbPtr;
 	uint32_t MemPgSize;
 	uint32_t OSDShowFlags;
 	uint32_t OSDRendrFlags;
+	int drop_fl;
+	int flush_fl;
 } queue_target_ctx_t;
 
 typedef struct video_surface_ctx_struct
@@ -116,17 +122,29 @@ typedef struct video_surface_ctx_struct
 	void (*decoder_private_free)(struct video_surface_ctx_struct *surface);
 } video_surface_ctx_t;
 
+typedef struct in_mem_fb in_mem_fb;
+
+typedef struct in_mem_fb
+{
+	uint32_t data_size;
+	uint32_t offset;
+//	void* pdata;
+} in_mem_fb_t;
+
 typedef struct decoder_ctx_struct
 {
 	VdpDecoderProfile profile;
 	uint32_t dec_width;
 	uint32_t dec_height;
 	device_ctx_t *device;
-	VdpStatus (*decode)(struct decoder_ctx_struct *decoder, VdpPictureInfo const *info, int *len, video_surface_ctx_t *output, Bool pflush);
+//	VdpStatus (*decode)(struct decoder_ctx_struct *decoder, VdpPictureInfo const *info, int *len, video_surface_ctx_t *output, Bool pflush);
+	void *(*decode)(void *args);
+	VdpPictureInfo const *pic_info;
+	video_surface_ctx_t *vs;
+	int	th_stat;
 	void *private;
 	void (*private_free)(struct decoder_ctx_struct *decoder);
 	DWLLinearMem_t streamMem;
-	uint32_t smBufLen;
 	void *DWLinstance;
 	void *pDecInst;
 	PPInst pp;
@@ -136,8 +154,12 @@ typedef struct decoder_ctx_struct
 //	uint32_t crop_x;
 //	uint32_t crop_y;
 	uint32_t rotation;
-	uint32_t src_blocks;
-	uint32_t npp_blocks;
+//	uint32_t in_blocks;
+	int drop_cnt;
+//	int drop_fl;
+	in_mem_fb_t *in_fbmem;
+	int cur_in_fbmem;
+	int last_in_fbmem;
 } decoder_ctx_t;
 
 typedef struct
@@ -247,8 +269,12 @@ int AllocMemPg(queue_target_ctx_t *qt, Bool init);
 void FreeAllMemPg(queue_target_ctx_t *qt);
 mem_fb_t *GetMemBlkForPut(queue_target_ctx_t *qt);
 #define GetMemPgForPut(qt) GetMemBlkForPut(qt)->pMemBuf
+#define GetMemMPgForPut(qt) GetMemBlkForPut(qt)->pMapMemBuf
+void GetMemPgFake(queue_target_ctx_t *qt, int drop_fl);
 
 int SetupOut(queue_target_ctx_t *qt, OvlLayoutFormatType DstFrmt, uint32_t xres, uint32_t yres);
+
+in_mem_fb_t *PopInBuf(decoder_ctx_t *dec);
 
 VdpStatus new_decoder_mpeg2(decoder_ctx_t *decoder);
 VdpStatus new_decoder_h264(decoder_ctx_t *decoder);

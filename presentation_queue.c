@@ -35,40 +35,43 @@ int AllocMemPg(queue_target_ctx_t *qt, Bool init)
     int ret=-1;
 
     if(!init && qt->FbAllCnt >= MEMPG_MAX_CNT)
-	goto err;
+    	goto err;
 
     mem_fb_t *FbPtr = calloc(1, sizeof(mem_fb_t));
 
     if (!FbPtr)
-	goto err;
+    	goto err;
 
     FbPtr->pMemBuf = OvlAllocMemPg(qt->MemPgSize, 0);
     if(!FbPtr->pMemBuf){
-	ret =-2;
-	goto err1;
+    	ret =-2;
+    	goto err1;
     }
 
     FbPtr->pMapMemBuf = OvlMapBufMem(FbPtr->pMemBuf);
     if(!FbPtr->pMapMemBuf){
-	ret =-3;
-	goto err2;
+    	ret =-3;
+    	goto err2;
     }
+
+    VDPAU_DBG(3, "ClrMemPg:%d", OvlClrMemPg(FbPtr->pMemBuf));
+
 //    FbPtr->pYUVMapMemBuf = FbPtr->pMapMemBuf + OvlGetYUVoffsetMemPg(FbPtr->pMemBuf);
     FbPtr->UVoffset = OvlGetUVoffsetMemPg(FbPtr->pMemBuf);
     FbPtr->PhyAddr = OvlGetPhyAddrMemPg(FbPtr->pMemBuf);
 
     qt->FbAllCnt++;
     if(init){
-	FbPtr->Next = FbPtr;
-	qt->PutFbPtr = FbPtr;
-	qt->DispFbPtr = FbPtr;
-	qt->WorkFbPtr = FbPtr;
-	qt->FbAllCnt = 1;
-	qt->FbFilledCnt = 2;//for display (one render + one prepare)
+    	FbPtr->Next = FbPtr;
+    	qt->PutFbPtr = FbPtr;
+    	qt->DispFbPtr = FbPtr;
+//    	qt->WorkFbPtr = FbPtr;
+    	qt->FbAllCnt = 1;
+    	qt->FbFilledCnt = 2;//for display (one render + one prepare)
     }
     else{
         FbPtr->Next = qt->PutFbPtr->Next;
-	qt->PutFbPtr->Next = FbPtr;
+        qt->PutFbPtr->Next = FbPtr;
     }
 
     VDPAU_DBG(2, "init:%d Alloc new buf: %d %p", init,qt->FbAllCnt, FbPtr);
@@ -107,35 +110,73 @@ void FreeAllMemPg(queue_target_ctx_t *qt)
     return;
 }
 
+static pthread_mutex_t out_buf_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t out_buf_cv = PTHREAD_COND_INITIALIZER;
+
 mem_fb_t *GetMemBlkForPut(queue_target_ctx_t *qt)
 {
-    if(qt->FbFilledCnt < qt->FbAllCnt || !AllocPhyMemPg(qt)){
-    if( qt->PutFbPtr->Next !=  qt->DispFbPtr){
-	qt->PutFbPtr = qt->PutFbPtr->Next;
-	qt->FbFilledCnt++;
-    }
+	pthread_mutex_lock(&out_buf_mutex);
+	while(qt->FbFilledCnt >= qt->FbAllCnt && !qt->drop_fl)
+		pthread_cond_wait(&out_buf_cv, &out_buf_mutex);
+
+	if(qt->drop_fl)
+		qt->drop_fl--;
+//	else
+	if(qt->FbFilledCnt < qt->FbAllCnt){
+	if( qt->PutFbPtr->Next !=  qt->DispFbPtr){
+		qt->PutFbPtr = qt->PutFbPtr->Next;
+		qt->FbFilledCnt++;
+/*    if(qt->FbFilledCnt < qt->FbAllCnt || !AllocPhyMemPg(qt)){
+    	if( qt->PutFbPtr->Next !=  qt->DispFbPtr){
+    		qt->PutFbPtr = qt->PutFbPtr->Next;
+    		qt->FbFilledCnt++;
+    	}
     }else{
-	VDPAU_DBG(3, "Drop Pic");
+    	VDPAU_DBG(3, "Drop Pic");
+    	*/
     }
 
-    VDPAU_DBG(4, "FbFilledCnt: %d  %p 0x%X %p",qt->FbFilledCnt, qt->PutFbPtr, qt->PutFbPtr->PhyAddr, qt->PutFbPtr->pMapMemBuf);
+    VDPAU_DBG(4, "FbFilledCnt:%d, drop_fl:%d, %p ",qt->FbFilledCnt, qt->drop_fl, qt->PutFbPtr);
+	}
+
+    pthread_mutex_unlock(&out_buf_mutex);
 
     return qt->PutFbPtr;
 }
 
 OvlMemPgPtr GetMemPgForDisp(queue_target_ctx_t *qt)
 {
-//    if(qt->FbFilledCnt > 2 && qt->DispFbPtr->Next != qt->PutFbPtr->Next){
+	pthread_mutex_lock(&out_buf_mutex);
+
     if(qt->FbFilledCnt > 2 && qt->DispFbPtr->Next != qt->PutFbPtr){
-	qt->DispFbPtr = qt->DispFbPtr->Next;
-	qt->FbFilledCnt--;
+    	qt->DispFbPtr = qt->DispFbPtr->Next;
+    	qt->FbFilledCnt--;
+    	if(qt->FbFilledCnt == (qt->FbAllCnt - 1))
+    		pthread_cond_signal(&out_buf_cv);
     }
 
-    qt->WorkFbPtr = qt->DispFbPtr->Next; //TODO check
+//    qt->WorkFbPtr = qt->DispFbPtr->Next; //TODO check
 
-    VDPAU_DBG(4, "FbFilledCnt: %d  %p 0x%X %p",qt->FbFilledCnt , qt->DispFbPtr, qt->DispFbPtr->PhyAddr, qt->DispFbPtr->pMapMemBuf);
+    VDPAU_DBG(4, "FbFilledCnt:%d, %p",qt->FbFilledCnt, qt->DispFbPtr);
+
+    pthread_mutex_unlock(&out_buf_mutex);
 
     return qt->DispFbPtr->pMemBuf;
+}
+
+void GetMemPgFake(queue_target_ctx_t *qt, int drop_fl)
+{
+	if(!qt || !qt->DispFbPtr)
+		return;
+
+	pthread_mutex_lock(&out_buf_mutex);
+	if(qt->FbFilledCnt >= qt->FbAllCnt){
+		qt->drop_fl = drop_fl;
+		pthread_cond_signal(&out_buf_cv);
+		VDPAU_DBG(4, "Drop pic:%d, drop_fl:%d, %p",qt->FbFilledCnt, qt->drop_fl, qt->DispFbPtr);
+	}
+	pthread_mutex_unlock(&out_buf_mutex);
+
 }
 
 uint64_t get_time(void)
@@ -167,7 +208,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 
 	qt->drawable = drawable;
 	qt->device = dev;
-
+	qt->DispFbPtr = NULL;
 	ret = Open_RkLayers();
 	if ( ret < 0)
 	{
@@ -229,6 +270,8 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 
 	qt->OSDRendrFlags = 0;
 	qt->OSDShowFlags = 0;
+	qt->drop_fl = 0;
+	qt->flush_fl = 0;
 	dev->queue_target = qt;
 	VDPAU_DBG(2, "ok");
 	return VDP_STATUS_OK;
@@ -374,6 +417,8 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     queue_ctx_t *q = handle_get(presentation_queue);
     if (!q)
 	return VDP_STATUS_INVALID_HANDLE;
+
+    q->target->flush_fl = 0;
 
 #ifdef DEBUG
 int dt = (get_time() - q->device->tmr)/1000000;

@@ -68,7 +68,7 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
 		qt->MemPgSize = MEMPG_DEF_SIZE;
 	    else
 */
-		qt->MemPgSize = (((width+7) &~7) * ((height+7) &~7) * 2) + (10 * 4096);//TODO Only for YUV modes
+	    qt->MemPgSize = OvlVresByXres(width) * height * 2;//TODO Only for YUV modes
 
 	    VDPAU_DBG(3, "MemPgSize:%d",qt->MemPgSize);
 
@@ -76,6 +76,7 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
 		FreeAllMemPg(qt);
 		return VDP_STATUS_RESOURCES;
 	    }
+while(AllocPhyMemPg(qt) >=0);//alloc all avail buffs
 	    SetupOut(qt, RK_FORMAT_YCrCb_NV12_SP, width , height);//For calculate dst pitch
 	}
 
@@ -185,16 +186,16 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 	switch (source_ycbcr_format)
 	{
 	case VDP_YCBCR_FORMAT_YUYV:
-	    OvlCopyPackedToFb(CurMemBuf->pMemBuf, source_data[0], source_pitches[0], qt->DSP_pitch, vs->width, vs->height, False);
+	    OvlCopyPackedToFb(CurMemBuf->pMemBuf, source_data[0], qt->DSP_pitch, source_pitches[0], vs->width, vs->height, False);
 	    break;
 	case VDP_YCBCR_FORMAT_UYVY:
-	    OvlCopyPackedToFb(CurMemBuf->pMemBuf, source_data[0], source_pitches[0], qt->DSP_pitch, vs->width, vs->height, True);
+	    OvlCopyPackedToFb(CurMemBuf->pMemBuf, source_data[0], qt->DSP_pitch, source_pitches[0], vs->width, vs->height, True);
 	    break;
 	case VDP_YCBCR_FORMAT_NV12:
-	    OvlCopyNV12SemiPlanarToFb(CurMemBuf->pMemBuf, source_data[0], source_data[1], source_pitches[0], qt->DSP_pitch, vs->width, vs->height);
+	    OvlCopyNV12SemiPlanarToFb(CurMemBuf->pMemBuf, source_data[0], source_data[1], qt->DSP_pitch, source_pitches[0], vs->width, vs->height);
 	    break;
 	case VDP_YCBCR_FORMAT_YV12:
-	    OvlCopyPlanarToFb(CurMemBuf->pMemBuf, source_data[0], source_data[2], source_data[1], source_pitches[0], qt->DSP_pitch, vs->width, vs->height);
+	    OvlCopyPlanarToFb(CurMemBuf->pMemBuf, source_data[0], source_data[2], source_data[1], qt->DSP_pitch, source_pitches[0], source_pitches[1], vs->width, vs->height);
 	    break;
 	case VDP_YCBCR_FORMAT_Y8U8V8A8:
 	case VDP_YCBCR_FORMAT_V8U8Y8A8:
