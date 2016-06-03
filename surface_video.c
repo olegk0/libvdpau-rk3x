@@ -77,7 +77,7 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
 		return VDP_STATUS_RESOURCES;
 	    }
 while(AllocPhyMemPg(qt) >=0);//alloc all avail buffs
-	    SetupOut(qt, RK_FORMAT_YCrCb_NV12_SP, width , height);//For calculate dst pitch
+	    SetupOut(qt, RKL_FORMAT_YCrCb_NV12_SP, width , height);//For calculate dst pitch
 	}
 
 	VDPAU_DBG(2, "ok");

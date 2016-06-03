@@ -217,18 +217,18 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
 		return VDP_STATUS_ERROR;
 	}
 
-	qt->VideoLayer = OvlAllocLay(SCALEL, ALC_NONE_FB);
-	if (qt->VideoLayer == ERRORL)
+	qt->VideoLayer = OvlAllocLay(SCALE_L, ALC_NONE_FB);
+	if (qt->VideoLayer == ERROR_L)
 		goto out_layer;
 
-	qt->OSDLayer = ERRORL;
+	qt->OSDLayer = ERROR_L;
 	if (dev->osd_enabled)
 	{
-	    qt->OSDLayer = OvlAllocLay(UIL, ALC_FRONT_FB);
-	    if (qt->OSDLayer == ERRORL)
+	    qt->OSDLayer = OvlAllocLay(UI_L, ALC_FRONT_FB);
+	    if (qt->OSDLayer == ERROR_L)
 		dev->osd_enabled = False;
 	    else{
-//		OvlSetModeFb(qt->OSDLayer, 0, 0, RK_FORMAT_BGRA_8888);
+//		OvlSetModeFb(qt->OSDLayer, 0, 0, RKL_FORMAT_BGRA_8888);
 		qt->OSD_DispMode = OvlGetModeByLay(qt->OSDLayer);
 		VDPAU_DBG(2, "OSD mode:%d", qt->OSD_DispMode);
 		qt->OSD_bpp = OvlGetBppByLay(qt->OSDLayer);
@@ -293,7 +293,7 @@ VdpStatus vdp_presentation_queue_target_destroy(VdpPresentationQueueTarget prese
 	if (!qt)
 		return VDP_STATUS_INVALID_HANDLE;
 
-        if (qt->OSDLayer != ERRORL)
+        if (qt->OSDLayer != ERROR_L)
 	    OvlFreeLay(qt->OSDLayer);
 
 	OvlFreeLay(qt->VideoLayer);
@@ -402,7 +402,7 @@ VdpStatus vdp_presentation_queue_get_time(VdpPresentationQueue presentation_queu
 
 int SetupOut(queue_target_ctx_t *qt, OvlLayoutFormatType DstFrmt, uint32_t xres, uint32_t yres)
 {
-    int ret = OvlSetupFb(qt->VideoLayer, RK_FORMAT_DEFAULT, DstFrmt, xres, yres);
+    int ret = OvlSetupFb(qt->VideoLayer, DstFrmt, xres, yres);
     qt->DSP_pitch = OvlGetVXresByLay(qt->VideoLayer) * OvlGetBppByLay(qt->VideoLayer);
     VDPAU_DBG(3, "Setup Fb, w:%d h:%d dpitch:%d", xres, yres, qt->DSP_pitch);
     return ret;
@@ -444,14 +444,14 @@ int dt = (get_time() - q->device->tmr)/1000000;
 	    switch (os->vs->source_format) {
 	    case VDP_YCBCR_FORMAT_YUYV:
 	    case VDP_YCBCR_FORMAT_UYVY:
-		q->DispMode = RK_FORMAT_YCbCr_422_SP;
+		q->DispMode = RKL_FORMAT_YCbCr_422_SP;
 		break;
 	    case VDP_YCBCR_FORMAT_NV12:
 	    case VDP_YCBCR_FORMAT_YV12:
-		q->DispMode = RK_FORMAT_YCrCb_NV12_SP;
+		q->DispMode = RKL_FORMAT_YCrCb_NV12_SP;
 		break;
 	    default:
-		q->DispMode = RK_FORMAT_YCrCb_NV12_SP;
+		q->DispMode = RKL_FORMAT_YCrCb_NV12_SP;
 		break;
 	    }
 	    SetupOut(q->target, q->DispMode, Src_w, Src_h);
